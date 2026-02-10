@@ -6,6 +6,7 @@ import { promptsRouter } from './prompts';
 import { configRouter } from './config';
 import { analyticsRouter } from './analytics';
 import { authRouter } from './auth';
+import { uploadRouter } from './upload';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -15,6 +16,7 @@ export const appRouter = router({
   config: configRouter,
   analytics: analyticsRouter,
   auth: authRouter,
+  upload: uploadRouter,
 });
 
 export type AppRouter = typeof appRouter;
