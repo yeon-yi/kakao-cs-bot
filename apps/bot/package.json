@@ -1,0 +1,22 @@
+{
+  "name": "@kakao-cs-bot/bot",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/worker.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.0",
+    "@trpc/client": "^11.0.0",
+    "superjson": "^2.2.0",
+    "@kakao-cs-bot/config": "*",
+    "@kakao-cs-bot/database": "*",
+    "@kakao-cs-bot/ai": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

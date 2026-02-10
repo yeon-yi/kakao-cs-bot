@@ -1,0 +1,77 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: kakao-cs-bot-prod
+  REGION: asia-northeast3
+  GKE_CLUSTER: kakao-cs-bot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run type-check
+    - run: npm test -- --run
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+    - name: Build & Push API
+      run: |
+        docker build -f infra/docker/api.Dockerfile \
+          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/api:${{ github.sha }} \
+          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/api:latest .
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/api:${{ github.sha }}
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/api:latest
+
+    - name: Build & Push Bot
+      run: |
+        docker build -f infra/docker/bot.Dockerfile \
+          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/bot:${{ github.sha }} \
+          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/bot:latest .
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/bot:${{ github.sha }}
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/bot:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Get GKE credentials
+      run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.REGION }}
+
+    - name: Deploy
+      run: |
+        kubectl set image deployment/api \
+          api=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/kakao-cs-bot/api:${{ github.sha }} \
+          -n kakao-cs-bot
+        kubectl rollout status deployment/api -n kakao-cs-bot --timeout=5m

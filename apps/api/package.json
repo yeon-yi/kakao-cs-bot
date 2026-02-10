@@ -1,0 +1,28 @@
+{
+  "name": "@kakao-cs-bot/api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@hono/trpc-server": "^0.3.0",
+    "@kakao-cs-bot/ai": "*",
+    "@kakao-cs-bot/config": "*",
+    "@kakao-cs-bot/database": "*",
+    "@trpc/server": "^11.0.0",
+    "hono": "^4.6.0",
+    "ioredis": "^5.4.0",
+    "jsonwebtoken": "^9.0.0",
+    "superjson": "^2.2.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.0",
+    "tsx": "^4.19.0"
+  }
+}

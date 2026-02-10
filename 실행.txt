@@ -1,0 +1,1 @@
+@SYSTEM_ARCHITECTURE.md @DATABASE_SCHEMA.md 프로젝트 초기화 시작
