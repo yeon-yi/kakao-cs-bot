@@ -7,6 +7,7 @@ import { configRouter } from './config';
 import { analyticsRouter } from './analytics';
 import { authRouter } from './auth';
 import { uploadRouter } from './upload';
+import { settingsRouter } from './settings';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   auth: authRouter,
   upload: uploadRouter,
+  settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;
