@@ -15,7 +15,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
     "test": "vitest",
-    "prepare": "husky install",
+    "prepare": "node -e \"try{require('husky').install()}catch(e){}\"",
     "cli": "node apps/cli/dist/index.js"
   },
   "devDependencies": {
