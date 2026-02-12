@@ -13,9 +13,7 @@ const proactiveRepo = new ProactiveRepository();
 const ESCALATION_THRESHOLD = 0.5;
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
-// Debug: webhook의 knowledgeRepo 검색 함수 export
-export const webhookKnowledgeSearch = (embedding: number[], text: string) =>
-  knowledgeRepo.search(embedding, text, { limit: 5 });
+
 
 // 방별 마지막 응답 시간 (rate limiting)
 const lastResponseMap = new Map<string, number>();
@@ -190,15 +188,6 @@ ${knowledgeContext}
       category,
       confidence: topSimilarity,
       processingMs: Date.now() - startTime,
-      _debug: {
-        rawMessage: message,
-        messageBytes: Buffer.from(message).toString('hex').slice(0, 60),
-        embLen: embedding.length,
-        embFirst3: embedding.slice(0, 3),
-        knowledgeCount: knowledge.length,
-        topQ: knowledge[0]?.question,
-        allSims: knowledge.map((k: any) => k.similarity),
-      },
     });
   } catch (error) {
     logger.error('Webhook error', { error: String(error) });
