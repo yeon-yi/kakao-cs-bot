@@ -191,6 +191,8 @@ ${knowledgeContext}
       confidence: topSimilarity,
       processingMs: Date.now() - startTime,
       _debug: {
+        rawMessage: message,
+        messageBytes: Buffer.from(message).toString('hex').slice(0, 60),
         embLen: embedding.length,
         embFirst3: embedding.slice(0, 3),
         knowledgeCount: knowledge.length,
