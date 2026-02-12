@@ -20,7 +20,7 @@ app.use('*', cors({
 }));
 
 // Health check
-app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/health', (c) => c.json({ status: 'ok', version: 'v2-embed-fix', timestamp: new Date().toISOString() }));
 app.get('/ready', (c) => c.json({ status: 'ready' }));
 
 // Webhook (봇 앱 → API, tRPC 외부)
