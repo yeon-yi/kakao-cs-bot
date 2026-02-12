@@ -1,13 +1,35 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { trpc } from '@/lib/trpc';
 
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [checking, setChecking] = useState(true);
 
+  const autoLoginMutation = trpc.auth.autoLogin.useMutation({
+    onSuccess: (data) => {
+      localStorage.setItem('token', data.token);
+      // Remove key from URL for cleanliness
+      window.history.replaceState({}, '', '/');
+      router.push('/dashboard');
+    },
+    onError: () => {
+      router.push('/login');
+    },
+  });
+
   useEffect(() => {
+    const key = searchParams.get('key');
+
+    if (key) {
+      // Auto-login with secret key
+      autoLoginMutation.mutate({ key });
+      return;
+    }
+
     const token = localStorage.getItem('token');
     if (token) {
       router.push('/dashboard');
@@ -15,7 +37,8 @@ export default function Home() {
       router.push('/login');
     }
     setChecking(false);
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (checking) {
     return (

@@ -5,10 +5,12 @@ import { getEnv } from '@kakao-cs-bot/config';
 import { TRPCError } from '@trpc/server';
 
 // Simple auth for admin dashboard
-// In production, integrate with NextAuth or proper auth provider
 const ADMIN_USERS: Record<string, string> = {
-  admin: 'admin123!', // Change in production
+  admin: 'admin123!',
 };
+
+// Auto-login secret key (use as URL param: ?key=ADMIN_SECRET_KEY)
+const ADMIN_AUTO_LOGIN_KEY = 'csbot2026!admin';
 
 export const authRouter = router({
   login: publicProcedure
@@ -25,10 +27,27 @@ export const authRouter = router({
       const token = jwt.sign(
         { sub: input.username, role: 'admin' },
         getEnv().JWT_SECRET,
-        { expiresIn: '24h' },
+        { expiresIn: '30d' },
       );
 
       return { token, user: { id: input.username, role: 'admin' as const } };
+    }),
+
+  // Auto-login via secret key (for bookmarkable link)
+  autoLogin: publicProcedure
+    .input(z.object({ key: z.string() }))
+    .mutation(async ({ input }) => {
+      if (input.key !== ADMIN_AUTO_LOGIN_KEY) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: '잘못된 키입니다' });
+      }
+
+      const token = jwt.sign(
+        { sub: 'admin', role: 'admin' },
+        getEnv().JWT_SECRET,
+        { expiresIn: '30d' },
+      );
+
+      return { token, user: { id: 'admin', role: 'admin' as const } };
     }),
 
   me: publicProcedure
