@@ -96,4 +96,12 @@
         android:text="평일만 응답"
         android:textSize="14sp" />
 
+    <CheckBox
+        android:id="@+id/chkProactive"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="자동 인사 (비활성 방 문안인사)"
+        android:textSize="14sp"
+        android:layout_marginTop="4dp" />
+
 </LinearLayout>

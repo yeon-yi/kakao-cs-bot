@@ -2,6 +2,7 @@ package com.csbot.app
 
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import com.google.gson.reflect.TypeToken
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -44,6 +45,22 @@ class ApiClient(private val prefs: BotPreferences) {
         val status: String?,
         val operatingHours: Boolean?,
         val timestamp: String?,
+    )
+
+    data class ProactiveMessage(
+        val id: Int,
+        @SerializedName("room_id")
+        val roomId: String,
+        val message: String,
+        @SerializedName("message_type")
+        val messageType: String?,
+        @SerializedName("user_name")
+        val userName: String?,
+    )
+
+    data class ProactiveResponse(
+        val messages: List<ProactiveMessage>?,
+        val error: String?,
     )
 
     /**
@@ -105,6 +122,68 @@ class ApiClient(private val prefs: BotPreferences) {
                 } catch (e: Exception) {
                     callback(null)
                 }
+            }
+        })
+    }
+
+    /**
+     * 대기중인 프로액티브(인사) 메시지 조회
+     */
+    fun getProactiveMessages(callback: (List<ProactiveMessage>?) -> Unit) {
+        val request = Request.Builder()
+            .url("${prefs.apiUrl}/webhook/proactive/pending?key=${prefs.apiKey}&limit=5")
+            .header("X-API-Key", prefs.apiKey)
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(null)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val json = response.body?.string() ?: ""
+                    val result = gson.fromJson(json, ProactiveResponse::class.java)
+                    callback(result.messages)
+                } catch (e: Exception) {
+                    callback(null)
+                }
+            }
+        })
+    }
+
+    /**
+     * 프로액티브 메시지 전송 결과 보고
+     */
+    fun reportProactive(
+        id: Int,
+        status: String,
+        error: String?,
+        callback: (Boolean) -> Unit
+    ) {
+        val bodyMap = mutableMapOf<String, Any>(
+            "id" to id,
+            "status" to status,
+        )
+        if (error != null) bodyMap["error"] = error
+
+        val body = gson.toJson(bodyMap).toRequestBody(jsonType)
+
+        val request = Request.Builder()
+            .url("${prefs.apiUrl}/webhook/proactive/report")
+            .header("X-API-Key", prefs.apiKey)
+            .header("Content-Type", "application/json")
+            .post(body)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(false)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                callback(response.isSuccessful)
             }
         })
     }

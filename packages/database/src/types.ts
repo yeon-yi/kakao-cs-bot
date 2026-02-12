@@ -523,6 +523,87 @@ export type Database = {
         };
         Relationships: [];
       };
+      room_blocks: {
+        Row: {
+          id: number;
+          room_id: string;
+          user_name: string | null;
+          reason: string;
+          blocked_by: string | null;
+          blocked_at: string;
+          unblocked_at: string | null;
+          is_active: boolean;
+        };
+        Insert: {
+          id?: number;
+          room_id: string;
+          user_name?: string | null;
+          reason?: string;
+          blocked_by?: string | null;
+          blocked_at?: string;
+          unblocked_at?: string | null;
+          is_active?: boolean;
+        };
+        Update: {
+          id?: number;
+          room_id?: string;
+          user_name?: string | null;
+          reason?: string;
+          blocked_by?: string | null;
+          blocked_at?: string;
+          unblocked_at?: string | null;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
+      proactive_messages: {
+        Row: {
+          id: number;
+          room_id: string;
+          user_name: string | null;
+          message: string;
+          message_type: string;
+          status: string;
+          scheduled_at: string;
+          sent_at: string | null;
+          last_activity: string | null;
+          inactive_days: number | null;
+          attempts: number;
+          last_error: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          room_id: string;
+          user_name?: string | null;
+          message: string;
+          message_type?: string;
+          status?: string;
+          scheduled_at?: string;
+          sent_at?: string | null;
+          last_activity?: string | null;
+          inactive_days?: number | null;
+          attempts?: number;
+          last_error?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          room_id?: string;
+          user_name?: string | null;
+          message?: string;
+          message_type?: string;
+          status?: string;
+          scheduled_at?: string;
+          sent_at?: string | null;
+          last_activity?: string | null;
+          inactive_days?: number | null;
+          attempts?: number;
+          last_error?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;

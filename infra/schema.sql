@@ -666,6 +666,62 @@ CREATE TRIGGER trg_category_assignees_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- --------------------------------------------------------------------------
+-- 6-5. room_blocks (해지요청 등으로 봇 응답 차단된 방)
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS room_blocks (
+    id          BIGSERIAL       PRIMARY KEY,
+    room_id     VARCHAR(100)    NOT NULL,
+    user_name   VARCHAR(100),
+    reason      VARCHAR(200)    NOT NULL DEFAULT '해지요청',
+    blocked_by  VARCHAR(100),
+    blocked_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    unblocked_at TIMESTAMPTZ,
+    is_active   BOOLEAN         NOT NULL DEFAULT TRUE,
+
+    CONSTRAINT uq_room_blocks_active UNIQUE (room_id, is_active)
+);
+
+COMMENT ON TABLE room_blocks IS 'Rooms blocked from bot responses (e.g. service cancellation requests)';
+
+CREATE INDEX IF NOT EXISTS idx_room_blocks_room_id
+    ON room_blocks (room_id);
+
+CREATE INDEX IF NOT EXISTS idx_room_blocks_is_active
+    ON room_blocks (is_active);
+
+-- --------------------------------------------------------------------------
+-- 6-6. proactive_messages (자동 문안인사 대기열)
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS proactive_messages (
+    id              BIGSERIAL       PRIMARY KEY,
+    room_id         VARCHAR(100)    NOT NULL,
+    user_name       VARCHAR(100),
+    message         TEXT            NOT NULL,
+    message_type    VARCHAR(50)     NOT NULL DEFAULT 'greeting'
+                    CHECK (message_type IN ('greeting', 'follow_up', 'announcement')),
+    status          VARCHAR(20)     NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'sent', 'failed', 'cancelled')),
+    scheduled_at    TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    sent_at         TIMESTAMPTZ,
+    last_activity   TIMESTAMPTZ,
+    inactive_days   INT,
+    attempts        INT             NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE proactive_messages IS 'Queued proactive messages (greetings for inactive rooms)';
+
+CREATE INDEX IF NOT EXISTS idx_proactive_messages_status
+    ON proactive_messages (status);
+
+CREATE INDEX IF NOT EXISTS idx_proactive_messages_room_id
+    ON proactive_messages (room_id);
+
+CREATE INDEX IF NOT EXISTS idx_proactive_messages_scheduled_at
+    ON proactive_messages (scheduled_at);
+
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================

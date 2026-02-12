@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 /**
  * CS봇 메인 화면
  * - 봇 ON/OFF 토글
+ * - 자동 인사 ON/OFF 토글
  * - 서버 연결 상태
  * - 실시간 로그
  * - 통계
@@ -145,8 +146,10 @@ class MainActivity : AppCompatActivity() {
 
         btnCheckPermission.visibility = if (hasPermission) android.view.View.GONE else android.view.View.VISIBLE
 
-        // 통계
-        txtStats.text = "응답: ${prefs.totalResponses}건  |  에스컬레이션: ${prefs.totalEscalations}건  |  에러: ${prefs.totalErrors}건"
+        // 통계 (캐시 방 수 + 인사 전송 포함)
+        val cachedRooms = NotificationService.getCachedRoomCount()
+        val proactiveLabel = if (prefs.proactiveEnabled) "인사: ${prefs.totalProactivesSent}건" else "인사: 꺼짐"
+        txtStats.text = "응답: ${prefs.totalResponses}건  |  $proactiveLabel  |  캐시: ${cachedRooms}방"
 
         // 로그
         val logs = NotificationService.getRecentLogs()
@@ -182,12 +185,14 @@ class MainActivity : AppCompatActivity() {
         val edtMinDelay = view.findViewById<EditText>(R.id.edtMinDelay)
         val edtMaxDelay = view.findViewById<EditText>(R.id.edtMaxDelay)
         val chkWeekday = view.findViewById<CheckBox>(R.id.chkWeekdayOnly)
+        val chkProactive = view.findViewById<CheckBox>(R.id.chkProactive)
 
         edtApiUrl.setText(prefs.apiUrl)
         edtApiKey.setText(prefs.apiKey)
         edtMinDelay.setText(prefs.minDelay.toString())
         edtMaxDelay.setText(prefs.maxDelay.toString())
         chkWeekday.isChecked = prefs.weekdayOnly
+        chkProactive.isChecked = prefs.proactiveEnabled
 
         AlertDialog.Builder(this)
             .setTitle("설정")
@@ -198,6 +203,7 @@ class MainActivity : AppCompatActivity() {
                 prefs.minDelay = edtMinDelay.text.toString().toIntOrNull() ?: 3000
                 prefs.maxDelay = edtMaxDelay.text.toString().toIntOrNull() ?: 8000
                 prefs.weekdayOnly = chkWeekday.isChecked
+                prefs.proactiveEnabled = chkProactive.isChecked
                 Toast.makeText(this, "설정 저장됨", Toast.LENGTH_SHORT).show()
             }
             .setNeutralButton("통계 초기화") { _, _ ->

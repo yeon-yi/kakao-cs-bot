@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { createLogger, getEnv } from '@kakao-cs-bot/config';
-import { KnowledgeRepository, ConversationRepository, EscalationRepository } from '@kakao-cs-bot/database';
+import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository } from '@kakao-cs-bot/database';
 import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
 
 const logger = createLogger('api:webhook');
@@ -8,6 +8,7 @@ const logger = createLogger('api:webhook');
 const knowledgeRepo = new KnowledgeRepository();
 const conversationRepo = new ConversationRepository();
 const escalationRepo = new EscalationRepository();
+const proactiveRepo = new ProactiveRepository();
 
 const ESCALATION_THRESHOLD = 0.5;
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
@@ -40,6 +41,12 @@ webhookApp.post('/message', async (c) => {
 
     if (!roomId || !message) {
       return c.json({ error: 'roomId and message are required' }, 400);
+    }
+
+    // 0. 차단된 방 체크 (해지요청 등)
+    const isBlocked = await proactiveRepo.isBlocked(roomId).catch(() => false);
+    if (isBlocked) {
+      return c.json({ answer: null, reason: 'room_blocked' });
     }
 
     // 1. 운영 시간 체크
@@ -193,6 +200,55 @@ webhookApp.get('/status', async (c) => {
     operatingHours: humanizer.isOperatingHours(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ===================== 프로액티브 메시징 엔드포인트 (봇 앱용) =====================
+
+// 대기중인 인사 메시지 조회 (봇 앱 폴링)
+webhookApp.get('/proactive/pending', async (c) => {
+  try {
+    const limit = parseInt(c.req.query('limit') || '5');
+    const messages = await proactiveRepo.getPendingMessages(limit);
+    return c.json({ messages });
+  } catch (error) {
+    logger.error('Proactive pending error', { error: String(error) });
+    return c.json({ messages: [], error: 'Failed to fetch pending messages' });
+  }
+});
+
+// 전송 결과 보고 (봇 앱 → API)
+webhookApp.post('/proactive/report', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { id, status, error: errorMsg } = body;
+
+    if (!id || !status) {
+      return c.json({ error: 'id and status are required' }, 400);
+    }
+
+    if (status === 'sent') {
+      await proactiveRepo.markSent(id);
+    } else if (status === 'failed') {
+      await proactiveRepo.markFailed(id, errorMsg || 'unknown');
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error('Proactive report error', { error: String(error) });
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// 방 차단 여부 확인 (봇 앱에서 캐시용)
+webhookApp.get('/blocks/check', async (c) => {
+  try {
+    const roomId = c.req.query('roomId');
+    if (!roomId) return c.json({ error: 'roomId required' }, 400);
+    const blocked = await proactiveRepo.isBlocked(roomId);
+    return c.json({ blocked });
+  } catch (error) {
+    return c.json({ blocked: false });
+  }
 });
 
 // AI 카테고리 분류

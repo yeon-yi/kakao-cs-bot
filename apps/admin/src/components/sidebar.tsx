@@ -15,6 +15,7 @@ const navItems = [
   { href: '/knowledge/feedback', label: '에스컬레이션', badge: true },
   { href: '/conversations', label: '대화 이력', divider: true },
   { href: '/identity', label: '신원 확인' },
+  { href: '/config/proactive', label: '자동 인사 / 차단' },
   { href: '/config/prompts', label: '프롬프트 관리' },
   { href: '/config/assignees', label: '담당자 설정' },
   { href: '/config/general', label: '설정' },

@@ -22,6 +22,10 @@ class BotPreferences(context: Context) {
         get() = prefs.getBoolean("bot_enabled", false)
         set(value) = prefs.edit().putBoolean("bot_enabled", value).apply()
 
+    var proactiveEnabled: Boolean
+        get() = prefs.getBoolean("proactive_enabled", true)
+        set(value) = prefs.edit().putBoolean("proactive_enabled", value).apply()
+
     var minDelay: Int
         get() = prefs.getInt("min_delay", 3000)
         set(value) = prefs.edit().putInt("min_delay", value).apply()
@@ -51,10 +55,15 @@ class BotPreferences(context: Context) {
         get() = prefs.getInt("total_errors", 0)
         set(value) = prefs.edit().putInt("total_errors", value).apply()
 
+    var totalProactivesSent: Int
+        get() = prefs.getInt("total_proactives", 0)
+        set(value) = prefs.edit().putInt("total_proactives", value).apply()
+
     fun resetStats() {
         totalResponses = 0
         totalEscalations = 0
         totalErrors = 0
+        totalProactivesSent = 0
     }
 
     companion object {

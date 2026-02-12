@@ -5,3 +5,4 @@ export { ConversationRepository } from './repositories/conversations';
 export { IdentityRepository } from './repositories/identity';
 export { ConfigRepository, PromptRepository, AnalyticsRepository } from './repositories/config';
 export { EscalationRepository } from './repositories/escalation';
+export { ProactiveRepository } from './repositories/proactive';
