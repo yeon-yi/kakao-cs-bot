@@ -13,6 +13,10 @@ const proactiveRepo = new ProactiveRepository();
 const ESCALATION_THRESHOLD = 0.5;
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
+// Debug: webhook의 knowledgeRepo 검색 함수 export
+export const webhookKnowledgeSearch = (embedding: number[], text: string) =>
+  knowledgeRepo.search(embedding, text, { limit: 5 });
+
 // 방별 마지막 응답 시간 (rate limiting)
 const lastResponseMap = new Map<string, number>();
 const MIN_INTERVAL_MS = 3000; // 같은 방에 최소 3초 간격
