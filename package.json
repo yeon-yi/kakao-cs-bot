@@ -13,7 +13,7 @@
     "dev:bot": "npm run dev -w apps/bot",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint . --ext .ts,.tsx",
-    "type-check": "tsc --noEmit",
+    "type-check": "npm run type-check --workspaces --if-present",
     "test": "vitest",
     "prepare": "node -e \"try{require('husky').install()}catch(e){}\"",
     "cli": "node apps/cli/dist/index.js"

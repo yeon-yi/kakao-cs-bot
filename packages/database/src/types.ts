@@ -435,7 +435,6 @@ export type Database = {
         };
         Relationships: [];
       };
-    };
       escalations: {
         Row: {
           id: number;
