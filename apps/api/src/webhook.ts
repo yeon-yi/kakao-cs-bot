@@ -239,6 +239,76 @@ webhookApp.post('/proactive/report', async (c) => {
   }
 });
 
+// ===================== n8n 자동화 엔드포인트 =====================
+
+// n8n cron → 비활성 방 자동 인사 생성
+webhookApp.post('/proactive/generate', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const inactiveDays = body.inactiveDays || 5;
+
+    const inactiveRooms = await proactiveRepo.findInactiveRooms(inactiveDays);
+
+    if (inactiveRooms.length === 0) {
+      return c.json({ created: 0, rooms: [], message: '비활성 방 없음' });
+    }
+
+    const GREETING_TEMPLATES = [
+      '안녕하세요! 혹시 추가로 도움이 필요하신 부분 있으신가요?',
+      '안녕하세요! 잘 지내고 계시죠? 문의사항이 있으시면 편하게 말씀해주세요.',
+      '안녕하세요! 그동안 잘 진행되고 계신가요? 필요하신 부분 있으시면 언제든 알려주세요.',
+    ];
+
+    const created: string[] = [];
+
+    for (const room of inactiveRooms) {
+      try {
+        const template = GREETING_TEMPLATES[Math.floor(Math.random() * GREETING_TEMPLATES.length)];
+        let greeting: string;
+
+        try {
+          const response = await aiGateway.generate({
+            prompt: `다음 문안인사를 자연스럽게 변형해주세요. 원본 의미를 유지하면서 약간의 변화를 주세요.
+친근하지만 프로페셔널하게, 2문장 이내로 작성하세요.
+고객 이름: ${room.userName || '고객'}
+
+원본: "${template}"
+
+변형된 인사:`,
+            systemPrompt: '광고 대행사 CS 담당자입니다. 간결하고 친근한 인사만 출력하세요.',
+            temperature: 0.8,
+            complexity: 'simple',
+          });
+          greeting = response.text.trim().replace(/^["']|["']$/g, '');
+        } catch {
+          greeting = template;
+        }
+
+        greeting = humanizer.humanizeResponse(greeting, { isThankYou: false });
+
+        await proactiveRepo.createMessage({
+          room_id: room.roomId,
+          user_name: room.userName,
+          message: greeting,
+          message_type: 'greeting',
+          last_activity: room.lastActivity,
+          inactive_days: room.inactiveDays,
+        });
+
+        created.push(room.roomId);
+      } catch (err) {
+        logger.warn('Failed to create greeting', { roomId: room.roomId, error: String(err) });
+      }
+    }
+
+    logger.info('n8n: Greetings generated', { count: created.length, inactiveDays });
+    return c.json({ created: created.length, rooms: created });
+  } catch (error) {
+    logger.error('Proactive generate error', { error: String(error) });
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // 방 차단 여부 확인 (봇 앱에서 캐시용)
 webhookApp.get('/blocks/check', async (c) => {
   try {

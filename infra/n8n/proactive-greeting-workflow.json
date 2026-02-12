@@ -1,0 +1,180 @@
+{
+  "name": "자동 인사 - 비활성 방 문안인사",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "매일 오전 10시",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.API_URL || 'https://carefree-analysis-production-7389.up.railway.app' }}/webhook/proactive/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WEBHOOK_SECRET || 'csbot-webhook-2026!secret' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "inactiveDays",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "generate-greetings",
+      "name": "인사 메시지 생성",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-created",
+              "leftValue": "={{ $json.created }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-result",
+      "name": "생성된 인사 있는지?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-msg",
+              "name": "message",
+              "value": "={{ $json.created }}건의 인사 메시지가 생성됨 ({{ $json.rooms.join(', ') }})",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-created",
+      "name": "생성 로그",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [880, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-msg-none",
+              "name": "message",
+              "value": "비활성 방 없음 - 인사 생성 불필요",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-none",
+      "name": "비활성 방 없음",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [880, 400]
+    }
+  ],
+  "connections": {
+    "매일 오전 10시": {
+      "main": [
+        [
+          {
+            "node": "인사 메시지 생성",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "인사 메시지 생성": {
+      "main": [
+        [
+          {
+            "node": "생성된 인사 있는지?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "생성된 인사 있는지?": {
+      "main": [
+        [
+          {
+            "node": "생성 로그",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "비활성 방 없음",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "proactive"
+    },
+    {
+      "name": "cron"
+    }
+  ]
+}
