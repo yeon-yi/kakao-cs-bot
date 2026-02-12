@@ -8,6 +8,7 @@ import { analyticsRouter } from './analytics';
 import { authRouter } from './auth';
 import { uploadRouter } from './upload';
 import { settingsRouter } from './settings';
+import { escalationRouter } from './escalation';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
   auth: authRouter,
   upload: uploadRouter,
   settings: settingsRouter,
+  escalation: escalationRouter,
 });
 
 export type AppRouter = typeof appRouter;

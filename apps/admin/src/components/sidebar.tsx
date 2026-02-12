@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { trpc } from '@/lib/trpc';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -11,16 +12,21 @@ const navItems = [
   { href: '/knowledge/add', label: 'Add Knowledge' },
   { href: '/knowledge/upload', label: 'File Import' },
   { href: '/knowledge/chat', label: 'Chat Training' },
-  { href: '/knowledge/feedback', label: 'Unanswered' },
+  { href: '/knowledge/feedback', label: 'Escalations', badge: true },
   { href: '/conversations', label: 'Conversations', divider: true },
   { href: '/identity', label: 'Identity' },
   { href: '/config/prompts', label: 'Prompts' },
+  { href: '/config/assignees', label: 'Assignees' },
   { href: '/config/general', label: 'Settings' },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+
+  const { data: pendingData } = trpc.escalation.pendingCount.useQuery(undefined, {
+    refetchInterval: 30000,
+  });
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -43,13 +49,18 @@ export function Sidebar() {
             <Link
               href={item.href}
               className={cn(
-                'block rounded px-3 py-1.5 text-[13px] transition-colors',
+                'flex items-center justify-between rounded px-3 py-1.5 text-[13px] transition-colors',
                 pathname === item.href
                   ? 'bg-zinc-800 text-white font-medium'
                   : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200',
               )}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {'badge' in item && item.badge && pendingData && pendingData.count > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-red-500 text-white rounded-full leading-none">
+                  {pendingData.count}
+                </span>
+              )}
             </Link>
           </div>
         ))}

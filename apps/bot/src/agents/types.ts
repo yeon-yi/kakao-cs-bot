@@ -1,7 +1,7 @@
 export type AgentType = 'coordinator' | 'message' | 'knowledge' | 'learning' | 'identity';
 export type AgentStatus = 'IDLE' | 'BUSY' | 'UNHEALTHY';
 export type TaskStatus = 'PENDING' | 'ASSIGNED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-export type TaskType = 'PROCESS_MESSAGE' | 'LEARN' | 'IDENTIFY';
+export type TaskType = 'PROCESS_MESSAGE' | 'LEARN' | 'IDENTIFY' | 'REPLY_ESCALATION';
 export type MessageState = 'IDLE' | 'READING' | 'ANALYZING' | 'SEARCHING' | 'GENERATING' | 'HUMANIZING' | 'TYPING' | 'SENDING';
 
 export interface AgentMessage {

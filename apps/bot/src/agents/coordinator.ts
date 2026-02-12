@@ -21,8 +21,14 @@ export class CoordinatorAgent extends EventEmitter {
 
   async start(): Promise<void> {
     // Subscribe to channels
-    await this.pubsub.subscribe('agent:coordinator', 'agent:heartbeat', 'agent:result');
+    await this.pubsub.subscribe('agent:coordinator', 'agent:heartbeat', 'agent:result', 'escalation:answered');
     this.pubsub.on('message', (channel: string, message: string) => {
+      if (channel === 'escalation:answered') {
+        this.handleEscalationAnswer(message).catch(err =>
+          logger.error('Escalation answer handling failed', { error: String(err) })
+        );
+        return;
+      }
       this.handleMessage(channel, message).catch(err =>
         logger.error('Message handling failed', { error: String(err) })
       );
@@ -97,9 +103,26 @@ export class CoordinatorAgent extends EventEmitter {
     logger.info(`Task ${task.id} assigned to ${agent.id}`);
   }
 
+  private async handleEscalationAnswer(message: string): Promise<void> {
+    const data = JSON.parse(message);
+    const { escalationId, roomId, userName, question, answer } = data;
+    const taskId = `escalation-reply-${escalationId}-${Date.now()}`;
+    const task: Task = {
+      id: taskId,
+      type: 'REPLY_ESCALATION',
+      priority: 'HIGH',
+      data: { roomId, userName, question, answer, escalationId },
+      status: 'PENDING',
+      createdAt: Date.now(),
+    };
+    await this.assignTask(task);
+    logger.info(`Escalation reply task created`, { escalationId, taskId });
+  }
+
   private selectAgent(taskType: string): AgentInfo | null {
     const typeMap: Record<string, AgentType> = {
       PROCESS_MESSAGE: 'message',
+      REPLY_ESCALATION: 'message',
       LEARN: 'learning',
       IDENTIFY: 'identity',
     };

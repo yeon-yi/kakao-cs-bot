@@ -436,6 +436,94 @@ export type Database = {
         Relationships: [];
       };
     };
+      escalations: {
+        Row: {
+          id: number;
+          conversation_id: number | null;
+          room_id: string;
+          user_id: string;
+          user_name: string | null;
+          user_message: string;
+          bot_response: string | null;
+          category: string | null;
+          confidence: number | null;
+          status: string;
+          assigned_to: number | null;
+          assigned_at: string | null;
+          answer: string | null;
+          answered_by: string | null;
+          answered_at: string | null;
+          knowledge_id: string | null;
+          replied_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          conversation_id?: number | null;
+          room_id: string;
+          user_id: string;
+          user_name?: string | null;
+          user_message: string;
+          bot_response?: string | null;
+          category?: string | null;
+          confidence?: number | null;
+          status?: string;
+          assigned_to?: number | null;
+          assigned_at?: string | null;
+          answer?: string | null;
+          answered_by?: string | null;
+          answered_at?: string | null;
+          knowledge_id?: string | null;
+          replied_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          conversation_id?: number | null;
+          room_id?: string;
+          user_id?: string;
+          user_name?: string | null;
+          user_message?: string;
+          bot_response?: string | null;
+          category?: string | null;
+          confidence?: number | null;
+          status?: string;
+          assigned_to?: number | null;
+          assigned_at?: string | null;
+          answer?: string | null;
+          answered_by?: string | null;
+          answered_at?: string | null;
+          knowledge_id?: string | null;
+          replied_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      category_assignees: {
+        Row: {
+          id: number;
+          category: string;
+          staff_id: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          category: string;
+          staff_id: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          category?: string;
+          staff_id?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+    };
     Views: {
       [_ in never]: never;
     };

@@ -609,6 +609,63 @@ INSERT INTO prompt_templates (name, template, version, variables, category, desc
 
 ON CONFLICT (name) DO NOTHING;
 
+-- --------------------------------------------------------------------------
+-- 6-3. escalations
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS escalations (
+    id               BIGSERIAL       PRIMARY KEY,
+    conversation_id  BIGINT          REFERENCES conversations(id),
+    room_id          VARCHAR(100)    NOT NULL,
+    user_id          VARCHAR(100)    NOT NULL,
+    user_name        VARCHAR(100),
+    user_message     TEXT            NOT NULL,
+    bot_response     TEXT,
+    category         VARCHAR(100),
+    confidence       FLOAT,
+    status           VARCHAR(20)     NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'assigned', 'answered', 'learned', 'dismissed')),
+    assigned_to      INT             REFERENCES company_staff(id),
+    assigned_at      TIMESTAMPTZ,
+    answer           TEXT,
+    answered_by      VARCHAR(100),
+    answered_at      TIMESTAMPTZ,
+    knowledge_id     UUID            REFERENCES knowledge_base(id),
+    replied_at       TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE escalations IS 'Tracks questions the bot could not answer, pending human review';
+
+CREATE INDEX IF NOT EXISTS idx_escalations_status
+    ON escalations (status);
+
+CREATE INDEX IF NOT EXISTS idx_escalations_category
+    ON escalations (category);
+
+CREATE INDEX IF NOT EXISTS idx_escalations_assigned_to
+    ON escalations (assigned_to);
+
+CREATE INDEX IF NOT EXISTS idx_escalations_created_at
+    ON escalations (created_at);
+
+-- --------------------------------------------------------------------------
+-- 6-4. category_assignees
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS category_assignees (
+    id          SERIAL          PRIMARY KEY,
+    category    VARCHAR(100)    NOT NULL UNIQUE,
+    staff_id    INT             NOT NULL REFERENCES company_staff(id),
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE category_assignees IS 'Maps knowledge categories to responsible staff members';
+
+CREATE TRIGGER trg_category_assignees_updated_at
+    BEFORE UPDATE ON category_assignees
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================

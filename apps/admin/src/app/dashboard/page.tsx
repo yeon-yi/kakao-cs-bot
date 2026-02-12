@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = trpc.analytics.summary.useQuery();
+  const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-20 text-muted-foreground">로딩 중...</div>;
@@ -27,7 +28,7 @@ export default function DashboardPage() {
     <div>
       <h1 className="mb-6 text-2xl font-bold">대시보드</h1>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="총 메시지 (30일)"
           value={summary?.totalMessages ?? 0}
@@ -45,6 +46,12 @@ export default function DashboardPage() {
         <StatCard
           title="AI 비용 (30일)"
           value={`$${(summary?.totalCost ?? 0).toFixed(2)}`}
+        />
+        <StatCard
+          title="대기중 에스컬레이션"
+          value={pendingData?.count ?? 0}
+          unit="건"
+          alert={(pendingData?.count ?? 0) > 0}
         />
       </div>
 
