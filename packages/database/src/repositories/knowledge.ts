@@ -9,7 +9,7 @@ export class KnowledgeRepository {
 
   async search(embedding: number[], text: string, options?: { tier?: number; category?: string; limit?: number }) {
     const { data, error } = await this.db.rpc('search_knowledge', {
-      query_embedding: embedding,
+      query_embedding: JSON.stringify(embedding),
       query_text: text,
       p_tier: options?.tier,
       p_category: options?.category,

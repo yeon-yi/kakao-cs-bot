@@ -53,6 +53,9 @@ const envSchema = z.object({
   MIN_RESPONSE_DELAY: z.coerce.number().default(2000),
   MAX_RESPONSE_DELAY: z.coerce.number().default(8000),
 
+  ADMIN_PASSWORD: z.string().min(4).default('admin123!'),
+  ADMIN_AUTO_LOGIN_KEY: z.string().min(4).default('csbot2026!admin'),
+
   WEBHOOK_SECRET: z.string().default('csbot-webhook-2026!secret'),
 
   DD_API_KEY: z.string().optional(),
