@@ -36,7 +36,9 @@ export class Humanizer {
 
   isOperatingHours(): boolean {
     const env = getEnv();
-    const now = new Date();
+    const tz = env.OPERATION_TIMEZONE || 'Asia/Seoul';
+    const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
+    const now = new Date(nowStr);
     const [startH, startM] = env.OPERATION_START_TIME.split(':').map(Number);
     const [endH, endM] = env.OPERATION_END_TIME.split(':').map(Number);
     const hour = now.getHours();
