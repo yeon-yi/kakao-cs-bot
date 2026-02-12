@@ -6,6 +6,7 @@ import { loadEnv } from '@kakao-cs-bot/config';
 import { createLogger } from '@kakao-cs-bot/config';
 import { appRouter } from './routers';
 import { createContext } from './context';
+import { webhookApp } from './webhook';
 
 const env = loadEnv();
 const logger = createLogger('api:server');
@@ -14,13 +15,16 @@ const app = new Hono();
 
 // CORS
 app.use('*', cors({
-  origin: env.CORS_ORIGIN,
+  origin: [env.CORS_ORIGIN, '*'],
   credentials: true,
 }));
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/ready', (c) => c.json({ status: 'ready' }));
+
+// Webhook (봇 앱 → API, tRPC 외부)
+app.route('/webhook', webhookApp);
 
 // tRPC
 app.use('/trpc/*', trpcServer({
