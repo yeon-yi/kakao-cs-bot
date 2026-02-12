@@ -190,6 +190,13 @@ ${knowledgeContext}
       category,
       confidence: topSimilarity,
       processingMs: Date.now() - startTime,
+      _debug: {
+        embLen: embedding.length,
+        embFirst3: embedding.slice(0, 3),
+        knowledgeCount: knowledge.length,
+        topQ: knowledge[0]?.question,
+        allSims: knowledge.map((k: any) => k.similarity),
+      },
     });
   } catch (error) {
     logger.error('Webhook error', { error: String(error) });
