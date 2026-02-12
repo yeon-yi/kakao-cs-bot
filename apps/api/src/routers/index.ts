@@ -10,6 +10,7 @@ import { uploadRouter } from './upload';
 import { settingsRouter } from './settings';
 import { escalationRouter } from './escalation';
 import { proactiveRouter } from './proactive';
+import { staffRouter } from './staff';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   settings: settingsRouter,
   escalation: escalationRouter,
   proactive: proactiveRouter,
+  staff: staffRouter,
 });
 
 export type AppRouter = typeof appRouter;
