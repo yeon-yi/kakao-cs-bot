@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [checking, setChecking] = useState(true);
@@ -12,7 +12,6 @@ export default function Home() {
   const autoLoginMutation = trpc.auth.autoLogin.useMutation({
     onSuccess: (data) => {
       localStorage.setItem('token', data.token);
-      // Remove key from URL for cleanliness
       window.history.replaceState({}, '', '/');
       router.push('/dashboard');
     },
@@ -25,7 +24,6 @@ export default function Home() {
     const key = searchParams.get('key');
 
     if (key) {
-      // Auto-login with secret key
       autoLoginMutation.mutate({ key });
       return;
     }
@@ -49,4 +47,16 @@ export default function Home() {
   }
 
   return null;
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-muted-foreground">Loading...</div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
+  );
 }
