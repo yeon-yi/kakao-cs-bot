@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build -w apps/admin",
+  "installCommand": "npm ci",
+  "framework": "nextjs",
+  "outputDirectory": "apps/admin/.next"
+}
