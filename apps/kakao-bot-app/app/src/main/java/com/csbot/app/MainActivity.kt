@@ -61,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(statusReceiver, IntentFilter("com.csbot.app.STATUS_UPDATE"), RECEIVER_NOT_EXPORTED)
+            registerReceiver(statusReceiver, IntentFilter("com.csbot.app.STATUS_UPDATE"), Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(statusReceiver, IntentFilter("com.csbot.app.STATUS_UPDATE"))
