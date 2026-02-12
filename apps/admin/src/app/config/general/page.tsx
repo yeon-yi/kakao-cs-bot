@@ -17,11 +17,11 @@ interface SettingValue {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  api_keys: 'API Keys',
-  ai: 'AI Settings',
-  knowledge: 'Knowledge Base',
-  response: 'Response',
-  integrations: 'Integrations',
+  api_keys: 'API 키',
+  ai: 'AI 설정',
+  knowledge: '지식 베이스',
+  response: '응답 설정',
+  integrations: '연동',
 };
 
 const CATEGORY_ORDER = ['api_keys', 'ai', 'knowledge', 'response', 'integrations'];
@@ -97,7 +97,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1">Settings</h1>
+      <h1 className="text-2xl font-bold mb-1">설정</h1>
       <p className="text-zinc-500 text-sm mb-8">API 키, AI 모델, 검색 설정 등을 관리합니다. 민감한 값은 마스킹되어 표시됩니다.</p>
 
       <div className="space-y-10">
@@ -128,7 +128,7 @@ export default function SettingsPage() {
                         </div>
                         {def.sensitive && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded font-medium">
-                            SENSITIVE
+                            민감
                           </span>
                         )}
                       </div>
@@ -155,19 +155,19 @@ export default function SettingsPage() {
                               disabled={isSaving}
                               className="px-3 py-2 bg-zinc-900 text-white text-xs rounded hover:bg-zinc-700 disabled:bg-zinc-300 font-medium"
                             >
-                              {isSaving ? '...' : 'Save'}
+                              {isSaving ? '...' : '저장'}
                             </button>
                             <button
                               onClick={() => handleCancel(def.key)}
                               className="px-3 py-2 bg-zinc-100 text-zinc-600 text-xs rounded hover:bg-zinc-200 font-medium"
                             >
-                              Cancel
+                              취소
                             </button>
                           </>
                         )}
 
                         {justSaved && (
-                          <span className="text-xs text-green-600 font-medium">Saved</span>
+                          <span className="text-xs text-green-600 font-medium">저장됨</span>
                         )}
                       </div>
 

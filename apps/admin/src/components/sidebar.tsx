@@ -6,18 +6,18 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/dashboard/analytics', label: 'Analytics' },
-  { href: '/knowledge', label: 'Knowledge Base', divider: true },
-  { href: '/knowledge/add', label: 'Add Knowledge' },
-  { href: '/knowledge/upload', label: 'File Import' },
-  { href: '/knowledge/chat', label: 'Chat Training' },
-  { href: '/knowledge/feedback', label: 'Escalations', badge: true },
-  { href: '/conversations', label: 'Conversations', divider: true },
-  { href: '/identity', label: 'Identity' },
-  { href: '/config/prompts', label: 'Prompts' },
-  { href: '/config/assignees', label: 'Assignees' },
-  { href: '/config/general', label: 'Settings' },
+  { href: '/dashboard', label: '대시보드' },
+  { href: '/dashboard/analytics', label: '분석' },
+  { href: '/knowledge', label: '지식 관리', divider: true },
+  { href: '/knowledge/add', label: '지식 추가' },
+  { href: '/knowledge/upload', label: '파일 업로드' },
+  { href: '/knowledge/chat', label: '대화형 학습' },
+  { href: '/knowledge/feedback', label: '에스컬레이션', badge: true },
+  { href: '/conversations', label: '대화 이력', divider: true },
+  { href: '/identity', label: '신원 확인' },
+  { href: '/config/prompts', label: '프롬프트 관리' },
+  { href: '/config/assignees', label: '담당자 설정' },
+  { href: '/config/general', label: '설정' },
 ];
 
 export function Sidebar() {
@@ -37,7 +37,7 @@ export function Sidebar() {
     <aside className="flex h-screen w-60 flex-col border-r bg-zinc-950 text-zinc-300">
       <div className="border-b border-zinc-800 px-5 py-5">
         <h2 className="text-base font-semibold tracking-tight text-white">CS Bot</h2>
-        <p className="text-[11px] text-zinc-500 mt-0.5">Admin Console</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5">관리자 콘솔</p>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-3">
@@ -71,7 +71,7 @@ export function Sidebar() {
           onClick={handleLogout}
           className="block w-full rounded px-3 py-1.5 text-left text-[13px] text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition-colors"
         >
-          Sign out
+          로그아웃
         </button>
       </div>
     </aside>
