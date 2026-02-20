@@ -5,6 +5,9 @@ WORKDIR /app
 FROM base AS builder
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
+COPY apps/admin/package.json apps/admin/
+COPY apps/bot/package.json apps/bot/
+COPY apps/cli/package.json apps/cli/
 COPY packages/*/package.json packages/*/
 RUN npm ci
 COPY . .
@@ -14,6 +17,9 @@ RUN npm run build -w packages/config -w packages/database -w packages/ai -w apps
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
+COPY apps/admin/package.json apps/admin/
+COPY apps/bot/package.json apps/bot/
+COPY apps/cli/package.json apps/cli/
 COPY packages/*/package.json packages/*/
 RUN npm ci --omit=dev
 

@@ -4,7 +4,10 @@ WORKDIR /app
 # Build (devDeps 포함 - next build에 필요)
 FROM base AS builder
 COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
 COPY apps/admin/package.json apps/admin/
+COPY apps/bot/package.json apps/bot/
+COPY apps/cli/package.json apps/cli/
 COPY packages/*/package.json packages/*/
 RUN npm ci
 COPY . .
