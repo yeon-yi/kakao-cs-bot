@@ -2,14 +2,17 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { UserCog, Plus, Pencil, Trash2, Check, X, Type } from 'lucide-react';
 
 const DEFAULT_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
 export default function AssigneesPage() {
   const [editCategory, setEditCategory] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
-
-  // 카테고리 관리 상태
   const [newCategory, setNewCategory] = useState('');
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -22,7 +25,6 @@ export default function AssigneesPage() {
     { retry: false },
   );
 
-  // 저장된 카테고리 목록 (없으면 기본값)
   const categories: string[] = categoriesConfig?.value ?? DEFAULT_CATEGORIES;
 
   const setMutation = trpc.escalation.assignees.set.useMutation({
@@ -50,10 +52,7 @@ export default function AssigneesPage() {
   }
 
   function saveCategories(newList: string[]) {
-    saveCategoriesMutation.mutate({
-      key: 'escalation.categories',
-      value: newList,
-    });
+    saveCategoriesMutation.mutate({ key: 'escalation.categories', value: newList });
   }
 
   function addCategory() {
@@ -65,10 +64,7 @@ export default function AssigneesPage() {
 
   function removeCategory(cat: string) {
     if (!confirm(`"${cat}" 카테고리를 삭제하시겠습니까?\n해당 카테고리의 담당자 설정도 함께 해제됩니다.`)) return;
-    // 담당자 해제
-    if (assigneeMap.has(cat)) {
-      removeMutation.mutate({ category: cat });
-    }
+    if (assigneeMap.has(cat)) removeMutation.mutate({ category: cat });
     saveCategories(categories.filter(c => c !== cat));
   }
 
@@ -79,19 +75,9 @@ export default function AssigneesPage() {
 
   function confirmRename(oldName: string) {
     const newName = renameValue.trim();
-    if (!newName || newName === oldName) {
-      setRenamingCategory(null);
-      return;
-    }
-    if (categories.includes(newName)) {
-      alert('이미 존재하는 카테고리 이름입니다.');
-      return;
-    }
-    // 카테고리 이름 변경
-    const newList = categories.map(c => c === oldName ? newName : c);
-    saveCategories(newList);
-
-    // 기존 담당자가 있으면 새 카테고리로 재설정
+    if (!newName || newName === oldName) { setRenamingCategory(null); return; }
+    if (categories.includes(newName)) { alert('이미 존재하는 카테고리 이름입니다.'); return; }
+    saveCategories(categories.map(c => c === oldName ? newName : c));
     const existing = assigneeMap.get(oldName);
     if (existing) {
       removeMutation.mutate({ category: oldName });
@@ -100,24 +86,38 @@ export default function AssigneesPage() {
     setRenamingCategory(null);
   }
 
+  const isLoading = assigneesLoading || staffLoading;
+  const assignedCount = categories.filter(c => assigneeMap.has(c)).length;
+
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">카테고리별 담당자</h1>
-      <p className="text-muted-foreground text-sm mb-6">
-        봇이 답변하지 못한 질문이 발생하면 해당 카테고리의 담당자에게 자동으로 배정됩니다.
-      </p>
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-zinc-900">담당자 배정</h1>
+            <p className="text-sm text-zinc-500 mt-1">
+              에스컬레이션 발생 시 카테고리별로 담당자를 자동 배정합니다. 미지정 카테고리는 전체 담당자에게 배정됩니다.
+            </p>
+          </div>
+          <Badge variant="outline" className="text-xs">
+            {assignedCount}/{categories.length} 배정
+          </Badge>
+        </div>
+      </div>
 
-      {(assigneesLoading || staffLoading) ? (
-        <p className="text-muted-foreground">로딩 중...</p>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+        </div>
       ) : (
         <>
-          <div className="border rounded-lg overflow-hidden mb-6">
+          <Card className="p-0 overflow-hidden mb-5">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">카테고리</th>
-                  <th className="px-4 py-3 text-left font-medium">담당자</th>
-                  <th className="px-4 py-3 text-right font-medium w-52">작업</th>
+                <tr className="border-b bg-zinc-50">
+                  <th className="px-4 py-3 text-left font-medium text-zinc-600">카테고리</th>
+                  <th className="px-4 py-3 text-left font-medium text-zinc-600">담당자</th>
+                  <th className="px-4 py-3 text-right font-medium text-zinc-600 w-48">작업</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,51 +128,42 @@ export default function AssigneesPage() {
                   const isRenaming = renamingCategory === category;
 
                   return (
-                    <tr key={category} className="border-b hover:bg-muted/25">
-                      <td className="px-4 py-3 font-medium">
+                    <tr key={category} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-zinc-900">
                         {isRenaming ? (
                           <div className="flex gap-1.5 items-center">
-                            <input
+                            <Input
                               type="text" value={renameValue}
                               onChange={(e) => setRenameValue(e.currentTarget.value)}
-                              className="border rounded px-2 py-0.5 text-sm w-32"
+                              className="w-32 text-sm"
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') confirmRename(category);
                                 if (e.key === 'Escape') setRenamingCategory(null);
                               }}
                             />
-                            <button
-                              onClick={() => confirmRename(category)}
-                              className="text-xs text-blue-600 hover:underline"
-                            >
-                              확인
+                            <button onClick={() => confirmRename(category)}
+                              className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50">
+                              <Check size={14} />
                             </button>
-                            <button
-                              onClick={() => setRenamingCategory(null)}
-                              className="text-xs text-muted-foreground hover:underline"
-                            >
-                              취소
+                            <button onClick={() => setRenamingCategory(null)}
+                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100">
+                              <X size={14} />
                             </button>
                           </div>
                         ) : (
-                          <span
-                            className="cursor-pointer hover:text-blue-600"
-                            onDoubleClick={() => startRename(category)}
-                            title="더블클릭하여 이름 변경"
-                          >
+                          <span className="cursor-pointer hover:text-blue-600"
+                            onDoubleClick={() => startRename(category)} title="더블클릭하여 이름 변경">
                             {category}
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {isEditing ? (
-                          <select
-                            value={selectedStaffId ?? ''}
+                          <select value={selectedStaffId ?? ''}
                             onChange={(e) => setSelectedStaffId(Number(e.currentTarget.value) || null)}
-                            className="p-1.5 border rounded text-sm w-full max-w-xs"
-                            autoFocus
-                          >
+                            className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                            autoFocus>
                             <option value="">선택하세요</option>
                             {staffList?.map((s) => (
                               <option key={s.id} value={s.id}>
@@ -181,64 +172,50 @@ export default function AssigneesPage() {
                             ))}
                           </select>
                         ) : staff ? (
-                          <span>
+                          <span className="text-zinc-700">
                             {staff.real_name}
-                            {staff.department && (
-                              <span className="text-muted-foreground ml-1">({staff.department})</span>
-                            )}
+                            {staff.department && <span className="text-zinc-400 ml-1">({staff.department})</span>}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">미지정</span>
+                          <span className="text-zinc-300 text-xs">미지정</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {isEditing ? (
                           <div className="flex gap-1.5 justify-end">
-                            <button
-                              onClick={() => handleSave(category)}
-                              disabled={!selectedStaffId || setMutation.isPending}
-                              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
-                            >
+                            <Button size="sm" onClick={() => handleSave(category)}
+                              disabled={!selectedStaffId || setMutation.isPending}>
                               저장
-                            </button>
-                            <button
-                              onClick={() => { setEditCategory(null); setSelectedStaffId(null); }}
-                              className="px-3 py-1 bg-zinc-200 text-zinc-600 text-xs rounded"
-                            >
+                            </Button>
+                            <Button size="sm" variant="secondary"
+                              onClick={() => { setEditCategory(null); setSelectedStaffId(null); }}>
                               취소
-                            </button>
+                            </Button>
                           </div>
                         ) : (
-                          <div className="flex gap-1.5 justify-end">
-                            <button
-                              onClick={() => {
-                                setEditCategory(category);
-                                setSelectedStaffId(assignee?.staff_id ?? null);
-                              }}
-                              className="px-2.5 py-1 border text-xs rounded hover:bg-muted"
-                            >
-                              {staff ? '변경' : '지정'}
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => { setEditCategory(category); setSelectedStaffId(assignee?.staff_id ?? null); }}
+                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                              title={staff ? '담당자 변경' : '담당자 지정'}>
+                              <UserCog size={14} />
                             </button>
-                            <button
-                              onClick={() => startRename(category)}
-                              className="px-2.5 py-1 text-xs text-zinc-500 hover:bg-muted rounded"
-                            >
-                              이름변경
+                            <button onClick={() => startRename(category)}
+                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                              title="이름 변경">
+                              <Type size={14} />
                             </button>
                             {staff && (
-                              <button
-                                onClick={() => removeMutation.mutate({ category })}
+                              <button onClick={() => removeMutation.mutate({ category })}
                                 disabled={removeMutation.isPending}
-                                className="px-2.5 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded"
-                              >
-                                해제
+                                className="rounded-lg p-1.5 text-zinc-400 hover:bg-orange-50 hover:text-orange-600"
+                                title="담당자 해제">
+                                <X size={14} />
                               </button>
                             )}
-                            <button
-                              onClick={() => removeCategory(category)}
-                              className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
-                            >
-                              삭제
+                            <button onClick={() => removeCategory(category)}
+                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                              title="카테고리 삭제">
+                              <Trash2 size={14} />
                             </button>
                           </div>
                         )}
@@ -248,33 +225,28 @@ export default function AssigneesPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </Card>
 
-          {/* 카테고리 추가 */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-semibold mb-2">카테고리 추가</h3>
+          <Card className="p-4">
+            <p className="text-sm font-medium text-zinc-700 mb-3">카테고리 추가</p>
             <div className="flex gap-2">
-              <input
-                type="text" value={newCategory}
+              <Input type="text" value={newCategory}
                 onChange={(e) => setNewCategory(e.currentTarget.value)}
-                className="flex-1 rounded border px-3 py-1.5 text-sm"
-                placeholder="새 카테고리 이름 입력"
+                placeholder="새 카테고리 이름"
+                className="flex-1"
                 onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }}
               />
-              <button
-                onClick={addCategory}
-                disabled={!newCategory.trim() || saveCategoriesMutation.isPending}
-                className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                추가
-              </button>
+              <Button onClick={addCategory}
+                disabled={!newCategory.trim() || saveCategoriesMutation.isPending}>
+                <Plus size={16} /> 추가
+              </Button>
             </div>
-          </div>
+          </Card>
         </>
       )}
 
       {(setMutation.error || saveCategoriesMutation.error) && (
-        <p className="mt-2 text-sm text-destructive">
+        <p className="mt-3 text-sm text-red-600">
           {setMutation.error?.message || saveCategoriesMutation.error?.message}
         </p>
       )}

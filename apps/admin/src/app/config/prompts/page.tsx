@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Input, Textarea } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { FileText, Save } from 'lucide-react';
 
 export default function PromptsPage() {
   const { data: prompts, isLoading } = trpc.prompts.list.useQuery();
@@ -25,59 +30,86 @@ export default function PromptsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">프롬프트 관리</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-zinc-900">프롬프트 관리</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          봇의 응답 생성에 사용되는 시스템 프롬프트를 관리합니다. 변경 시 사유를 기록하여 버전 이력을 관리합니다.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        <div className="col-span-1 space-y-1">
-          <h2 className="mb-2 text-sm font-medium text-muted-foreground">프롬프트 목록</h2>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">로딩 중...</p>
-          ) : (
-            prompts?.map((p) => (
-              <button key={p.name} onClick={() => { setSelected(p.name); setEditedTemplate(p.template); }}
-                className={`w-full rounded-md px-3 py-2 text-left text-sm ${
-                  selected === p.name ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-                }`}>
-                {p.name}
-                <span className="ml-2 text-xs opacity-60">v{p.version}</span>
-              </button>
-            ))
-          )}
+      <div className="grid grid-cols-4 gap-5">
+        <div className="col-span-1">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">프롬프트 목록</p>
+          <div className="space-y-1">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+              </div>
+            ) : (
+              prompts?.map((p) => (
+                <button
+                  key={p.name}
+                  onClick={() => { setSelected(p.name); setEditedTemplate(p.template); setReason(''); }}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                    selected === p.name
+                      ? 'bg-blue-600 text-white'
+                      : 'text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  <FileText size={14} className={selected === p.name ? 'text-blue-200' : 'text-zinc-400'} />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <Badge variant={selected === p.name ? 'default' : 'outline'} className={selected === p.name ? 'bg-blue-500 text-white border-0' : ''}>
+                    v{p.version}
+                  </Badge>
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="col-span-3">
           {prompt ? (
-            <div>
+            <Card>
               <div className="mb-4">
-                <h2 className="text-lg font-semibold">{prompt.name}</h2>
-                <p className="text-sm text-muted-foreground">버전 {prompt.version}</p>
+                <h2 className="text-base font-semibold text-zinc-900">{prompt.name}</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">버전 {prompt.version}</p>
               </div>
 
-              <textarea value={editedTemplate}
+              <Textarea
+                value={editedTemplate}
                 onChange={(e) => setEditedTemplate(e.currentTarget.value)}
-                className="h-96 w-full rounded-md border bg-muted/50 p-4 font-mono text-sm"
+                className="h-96 font-mono text-xs leading-relaxed bg-zinc-50"
               />
 
               <div className="mt-4 flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="mb-1 block text-sm">변경 사유</label>
-                  <input type="text" value={reason} onChange={(e) => setReason(e.currentTarget.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm" placeholder="변경 이유를 입력하세요" />
+                  <label className="mb-1.5 block text-sm font-medium text-zinc-700">변경 사유</label>
+                  <Input
+                    type="text" value={reason} onChange={(e) => setReason(e.currentTarget.value)}
+                    placeholder="변경 이유를 입력하세요 (필수)"
+                  />
                 </div>
-                <button onClick={() => updateMutation.mutate({
-                  name: prompt.name, template: editedTemplate, reason,
-                })} disabled={!reason || updateMutation.isPending}
-                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                <Button
+                  onClick={() => updateMutation.mutate({ name: prompt.name, template: editedTemplate, reason })}
+                  disabled={!reason.trim() || updateMutation.isPending}
+                >
+                  <Save size={16} />
                   {updateMutation.isPending ? '저장 중...' : '저장'}
-                </button>
+                </Button>
               </div>
 
               {updateMutation.isSuccess && (
-                <p className="mt-2 text-sm text-green-600">저장되었습니다.</p>
+                <p className="mt-2 text-sm text-emerald-600">저장되었습니다.</p>
               )}
-            </div>
+              {updateMutation.error && (
+                <p className="mt-2 text-sm text-red-600">{updateMutation.error.message}</p>
+              )}
+            </Card>
           ) : (
-            <p className="py-20 text-center text-muted-foreground">왼쪽에서 프롬프트를 선택하세요</p>
+            <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
+              <FileText size={32} className="mb-3 text-zinc-300" />
+              <p className="text-sm">왼쪽에서 프롬프트를 선택하세요</p>
+            </div>
           )}
         </div>
       </div>

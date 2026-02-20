@@ -2,6 +2,15 @@
 
 import { useState, useRef } from 'react';
 import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Input, Textarea, Select, FormField } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Upload, FileText, CheckCircle, XCircle } from 'lucide-react';
+
+const CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
+const ACCEPT_TYPES = '.txt,.md,.csv,.json';
+const MAX_CHARS = 50000;
 
 export default function KnowledgeUploadPage() {
   const [content, setContent] = useState('');
@@ -17,35 +26,29 @@ export default function KnowledgeUploadPage() {
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setSource(file.name);
     setError('');
 
-    if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+    try {
       const text = await file.text();
-      setContent(text);
-    } else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-      const text = await file.text();
-      setContent(text);
-    } else if (file.type.includes('json') || file.name.endsWith('.json')) {
-      const text = await file.text();
-      try {
-        const json = JSON.parse(text);
-        setContent(JSON.stringify(json, null, 2));
-      } catch {
+      if (text.length > MAX_CHARS) {
+        setError(`파일이 너무 큽니다 (${text.length.toLocaleString()}자). ${MAX_CHARS.toLocaleString()}자 이하로 줄여주세요.`);
+        return;
+      }
+      if (file.name.endsWith('.json')) {
+        try { setContent(JSON.stringify(JSON.parse(text), null, 2)); } catch { setContent(text); }
+      } else {
         setContent(text);
       }
-    } else {
-      setError('지원 형식: .txt, .md, .csv, .json (PDF/엑셀은 텍스트로 복사 후 직접 붙여넣기 해주세요)');
-      return;
+    } catch {
+      setError('파일을 읽는 중 오류가 발생했습니다.');
     }
   }
 
   async function handleSubmit() {
-    if (!content.trim() || !source.trim()) {
-      setError('내용과 출처를 모두 입력해 주세요.');
-      return;
-    }
+    if (!content.trim()) { setError('내용을 입력해 주세요.'); return; }
+    if (!source.trim()) { setError('출처를 입력해 주세요.'); return; }
+    if (content.length > MAX_CHARS) { setError(`내용이 ${MAX_CHARS.toLocaleString()}자를 초과합니다.`); return; }
 
     setIsProcessing(true);
     setError('');
@@ -65,104 +68,109 @@ export default function KnowledgeUploadPage() {
     }
   }
 
+  function handleReset() {
+    setContent('');
+    setSource('');
+    setCategory('');
+    setResult(null);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">파일 업로드 학습</h1>
-      <p className="text-gray-500 mb-6">문서를 업로드하면 AI가 자동으로 Q&A를 추출하여 지식으로 등록합니다.</p>
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-zinc-900">파일 업로드 학습</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          문서를 업로드하면 AI가 자동으로 Q&A 쌍을 추출하여 지식 DB에 등록합니다.
+          TXT, MD, CSV, JSON 파일을 지원합니다.
+        </p>
+      </div>
 
-      <div className="space-y-4">
-        {/* 파일 선택 */}
-        <div>
-          <label className="block text-sm font-medium mb-1">파일 선택</label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt,.md,.csv,.json"
-            onChange={handleFileSelect}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-          />
-        </div>
+      <Card className="space-y-5">
+        <FormField label="파일 선택" hint="지원 형식: .txt, .md, .csv, .json (최대 50,000자)">
+          <div className="flex items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-blue-300 hover:text-blue-600">
+              <Upload size={18} />
+              <span>파일 찾기</span>
+              <input ref={fileInputRef} type="file" accept={ACCEPT_TYPES} onChange={handleFileSelect} className="hidden" />
+            </label>
+            {source && (
+              <div className="flex items-center gap-2 text-sm text-zinc-600">
+                <FileText size={16} className="text-zinc-400" />
+                {source}
+              </div>
+            )}
+          </div>
+        </FormField>
 
-        {/* 출처 */}
-        <div>
-          <label className="block text-sm font-medium mb-1">출처/문서명 *</label>
-          <input
-            type="text"
-            value={source}
-            onChange={(e) => setSource(e.currentTarget.value)}
-            placeholder="예: 서비스 소개서 2024, 가격표, FAQ 문서"
-            className="w-full p-2 border rounded"
-          />
-        </div>
+        <FormField label="출처/문서명" required hint="어떤 문서에서 추출한 지식인지 식별하기 위한 이름">
+          <Input type="text" value={source} onChange={(e) => setSource(e.currentTarget.value)}
+            placeholder="예: 서비스 소개서 2024, 가격표, FAQ 문서" />
+        </FormField>
 
-        {/* 카테고리 */}
-        <div>
-          <label className="block text-sm font-medium mb-1">카테고리 (선택)</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.currentTarget.value)}
-            className="w-full p-2 border rounded"
-          >
-            <option value="">AI가 자동 분류</option>
-            <option value="네이버트래픽">네이버트래픽</option>
-            <option value="블로그기자단">블로그기자단</option>
-            <option value="인스타그램">인스타그램</option>
-            <option value="홈페이지">홈페이지</option>
-            <option value="SEO">SEO</option>
-            <option value="영상촬영">영상촬영</option>
-            <option value="일반">일반</option>
-          </select>
-        </div>
+        <FormField label="카테고리" hint="지정하지 않으면 AI가 자동으로 분류합니다">
+          <Select value={category} onChange={(e) => setCategory(e.currentTarget.value)}>
+            <option value="">AI 자동 분류</option>
+            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </Select>
+        </FormField>
 
-        {/* 텍스트 내용 */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            내용 * <span className="text-gray-400">(파일 선택 시 자동 입력, 또는 직접 붙여넣기)</span>
-          </label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.currentTarget.value)}
-            rows={12}
+        <FormField label="내용" required hint="파일 선택 시 자동 입력되거나, 직접 붙여넣기 할 수 있습니다">
+          <Textarea value={content} onChange={(e) => setContent(e.currentTarget.value)} rows={10}
             placeholder="여기에 문서 내용을 붙여넣거나 위에서 파일을 선택하세요..."
-            className="w-full p-3 border rounded font-mono text-sm"
-          />
-          <p className="text-xs text-gray-400 mt-1">{content.length.toLocaleString()}/50,000자</p>
-        </div>
+            className="font-mono text-xs leading-relaxed" />
+          <div className="mt-1 flex justify-between">
+            <span />
+            <span className={`text-xs ${content.length > MAX_CHARS ? 'text-red-500 font-medium' : 'text-zinc-400'}`}>
+              {content.length.toLocaleString()}/{MAX_CHARS.toLocaleString()}자
+            </span>
+          </div>
+        </FormField>
 
-        {/* 에러 */}
         {error && (
-          <div className="p-3 bg-red-50 text-red-700 rounded">{error}</div>
+          <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
         )}
 
-        {/* 제출 */}
-        <button
-          onClick={handleSubmit}
-          disabled={isProcessing || !content.trim() || !source.trim()}
-          className="w-full py-3 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-        >
-          {isProcessing ? 'AI 분석 중... (최대 30초 소요)' : 'AI로 지식 추출 및 등록'}
-        </button>
+        <div className="flex gap-3 border-t border-zinc-100 pt-5">
+          <Button onClick={handleSubmit} disabled={isProcessing || !content.trim() || !source.trim()} className="flex-1">
+            {isProcessing ? 'AI 분석 중... (최대 30초 소요)' : 'AI로 지식 추출 및 등록'}
+          </Button>
+          {(content || source || result) && (
+            <Button onClick={handleReset} variant="secondary">초기화</Button>
+          )}
+        </div>
 
-        {/* 결과 */}
         {result && (
-          <div className="p-4 bg-green-50 rounded space-y-3">
-            <h3 className="font-bold text-green-800">
-              처리 완료! ({result.added}건 등록, {result.skipped}건 건너뜀)
-            </h3>
-            <p className="text-sm text-gray-600">
-              AI 모델: {result.aiModel} | 비용: ${result.aiCost?.toFixed(4)} | 처리시간: {(result.processingTime / 1000).toFixed(1)}초
-            </p>
-            <div className="space-y-1">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={18} className="text-emerald-600" />
+              <p className="font-medium text-emerald-800">
+                처리 완료 - {result.added}건 등록, {result.skipped}건 건너뜀
+              </p>
+            </div>
+            <div className="flex gap-3 text-xs text-zinc-500">
+              <span>AI: {result.aiModel}</span>
+              <span>비용: ${result.aiCost?.toFixed(4)}</span>
+              <span>소요: {(result.processingTime / 1000).toFixed(1)}초</span>
+            </div>
+            <div className="space-y-1 pt-1">
               {result.results?.map((r: any, i: number) => (
-                <div key={i} className={`text-sm ${r.status === 'added' ? 'text-green-700' : 'text-gray-500'}`}>
-                  {r.status === 'added' ? '✓' : '○'} {r.question}
-                  {r.reason && <span className="text-xs text-gray-400 ml-2">({r.reason})</span>}
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  {r.status === 'added'
+                    ? <CheckCircle size={14} className="mt-0.5 text-emerald-500 shrink-0" />
+                    : <XCircle size={14} className="mt-0.5 text-zinc-400 shrink-0" />
+                  }
+                  <span className={r.status === 'added' ? 'text-zinc-700' : 'text-zinc-400'}>
+                    {r.question}
+                    {r.reason && <span className="ml-2 text-xs text-zinc-400">({r.reason})</span>}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

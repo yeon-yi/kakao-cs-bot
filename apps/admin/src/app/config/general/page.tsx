@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Save, X, Check } from 'lucide-react';
 
 interface SettingDef {
   key: string;
@@ -11,17 +16,12 @@ interface SettingDef {
   description: string;
 }
 
-interface SettingValue {
-  value: string;
-  masked: boolean;
-}
-
 const CATEGORY_LABELS: Record<string, string> = {
   api_keys: 'API 키',
   ai: 'AI 설정',
-  knowledge: '지식 베이스',
+  knowledge: '지식 검색',
   response: '응답 설정',
-  integrations: '연동',
+  integrations: '외부 연동',
 };
 
 const CATEGORY_ORDER = ['api_keys', 'ai', 'knowledge', 'response', 'integrations'];
@@ -35,7 +35,6 @@ export default function SettingsPage() {
   const { data: values, refetch: refetchValues } = trpc.settings.getAll.useQuery();
   const setMutation = trpc.settings.set.useMutation();
 
-  // 카테고리별로 그룹핑
   function groupByCategory(defs: SettingDef[]) {
     const groups: Record<string, SettingDef[]> = {};
     for (const d of defs) {
@@ -63,11 +62,7 @@ export default function SettingsPage() {
     try {
       await setMutation.mutateAsync({ key, value: val });
       setSaved(key);
-      setEditValues((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      setEditValues(prev => { const next = { ...prev }; delete next[key]; return next; });
       await refetchValues();
       setTimeout(() => setSaved(null), 2000);
     } catch (err: any) {
@@ -77,42 +72,37 @@ export default function SettingsPage() {
     }
   }
 
-  function handleChange(key: string, value: string) {
-    setEditValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleCancel(key: string) {
-    setEditValues((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }
-
   if (!definitions) {
-    return <p className="text-zinc-500">로딩 중...</p>;
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      </div>
+    );
   }
 
   const groups = groupByCategory(definitions);
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1">설정</h1>
-      <p className="text-zinc-500 text-sm mb-8">API 키, AI 모델, 검색 설정 등을 관리합니다. 민감한 값은 마스킹되어 표시됩니다.</p>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-zinc-900">일반 설정</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          API 키, AI 모델, 검색 설정 등을 관리합니다. 변경사항은 즉시 서버에 반영됩니다.
+        </p>
+      </div>
 
-      <div className="space-y-10">
-        {CATEGORY_ORDER.map((cat) => {
+      <div className="space-y-8">
+        {CATEGORY_ORDER.map(cat => {
           const items = groups[cat];
-          if (!items || items.length === 0) return null;
+          if (!items?.length) return null;
 
           return (
             <section key={cat}>
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 pb-2 border-b border-zinc-200">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b border-zinc-100">
                 {CATEGORY_LABELS[cat] || cat}
               </h2>
-
-              <div className="space-y-4">
-                {items.map((def) => {
+              <div className="space-y-3">
+                {items.map(def => {
                   const currentVal = getCurrentValue(def.key);
                   const masked = isMasked(def.key);
                   const isEditing = editValues[def.key] !== undefined;
@@ -120,59 +110,43 @@ export default function SettingsPage() {
                   const justSaved = saved === def.key;
 
                   return (
-                    <div key={def.key} className="border rounded-lg p-4 bg-white">
+                    <Card key={def.key} className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <p className="font-medium text-sm text-zinc-900">{def.label}</p>
+                          <p className="text-sm font-medium text-zinc-900">{def.label}</p>
                           <p className="text-xs text-zinc-400 mt-0.5">{def.description}</p>
                         </div>
-                        {def.sensitive && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded font-medium">
-                            민감
+                        {def.sensitive && <Badge variant="warning">민감</Badge>}
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          type={def.sensitive && !isEditing ? 'password' : 'text'}
+                          value={currentVal}
+                          onChange={(e) => setEditValues(prev => ({ ...prev, [def.key]: e.currentTarget.value }))}
+                          onFocus={() => { if (masked && editValues[def.key] === undefined) setEditValues(prev => ({ ...prev, [def.key]: '' })); }}
+                          placeholder={masked ? '(저장됨 - 클릭하여 변경)' : '값을 입력하세요'}
+                          disabled={isSaving}
+                          className="flex-1 font-mono text-xs"
+                        />
+                        {isEditing && (
+                          <>
+                            <Button onClick={() => handleSave(def.key)} disabled={isSaving} size="sm">
+                              <Save size={14} /> {isSaving ? '...' : '저장'}
+                            </Button>
+                            <Button onClick={() => setEditValues(prev => { const next = { ...prev }; delete next[def.key]; return next; })}
+                              variant="secondary" size="sm">
+                              <X size={14} />
+                            </Button>
+                          </>
+                        )}
+                        {justSaved && (
+                          <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <Check size={14} /> 저장됨
                           </span>
                         )}
                       </div>
-
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type={def.sensitive && !isEditing ? 'password' : 'text'}
-                          value={currentVal}
-                          onChange={(e) => handleChange(def.key, e.currentTarget.value)}
-                          onFocus={() => {
-                            if (masked && editValues[def.key] === undefined) {
-                              handleChange(def.key, '');
-                            }
-                          }}
-                          placeholder={masked ? '(저장됨 - 클릭하여 변경)' : '값을 입력하세요'}
-                          className="flex-1 px-3 py-2 border rounded text-sm font-mono bg-zinc-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                          disabled={isSaving}
-                        />
-
-                        {isEditing && (
-                          <>
-                            <button
-                              onClick={() => handleSave(def.key)}
-                              disabled={isSaving}
-                              className="px-3 py-2 bg-zinc-900 text-white text-xs rounded hover:bg-zinc-700 disabled:bg-zinc-300 font-medium"
-                            >
-                              {isSaving ? '...' : '저장'}
-                            </button>
-                            <button
-                              onClick={() => handleCancel(def.key)}
-                              className="px-3 py-2 bg-zinc-100 text-zinc-600 text-xs rounded hover:bg-zinc-200 font-medium"
-                            >
-                              취소
-                            </button>
-                          </>
-                        )}
-
-                        {justSaved && (
-                          <span className="text-xs text-green-600 font-medium">저장됨</span>
-                        )}
-                      </div>
-
                       <p className="text-[10px] text-zinc-300 mt-1.5 font-mono">{def.key}</p>
-                    </div>
+                    </Card>
                   );
                 })}
               </div>

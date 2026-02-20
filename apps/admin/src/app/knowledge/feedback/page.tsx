@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Textarea, Select } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { AlertCircle, MessageSquare, X } from 'lucide-react';
 
 const STATUS_TABS = [
   { value: undefined, label: '전체' },
@@ -14,17 +19,13 @@ const STATUS_TABS = [
 
 const CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
-function statusBadge(status: string) {
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '대기중' },
-    assigned: { bg: 'bg-blue-100', text: 'text-blue-800', label: '배정됨' },
-    answered: { bg: 'bg-green-100', text: 'text-green-800', label: '답변됨' },
-    learned: { bg: 'bg-purple-100', text: 'text-purple-800', label: '학습완료' },
-    dismissed: { bg: 'bg-gray-100', text: 'text-gray-600', label: '무시' },
-  };
-  const s = map[status] || map.pending;
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>{s.label}</span>;
-}
+const STATUS_BADGE: Record<string, { variant: any; label: string }> = {
+  pending: { variant: 'warning', label: '대기중' },
+  assigned: { variant: 'primary', label: '배정됨' },
+  answered: { variant: 'success', label: '답변됨' },
+  learned: { variant: 'purple', label: '학습완료' },
+  dismissed: { variant: 'default', label: '무시' },
+};
 
 export default function EscalationPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -35,13 +36,7 @@ export default function EscalationPage() {
   const limit = 20;
 
   const utils = trpc.useUtils();
-
-  const { data, isLoading } = trpc.escalation.list.useQuery({
-    status: statusFilter as any,
-    offset,
-    limit,
-  });
-
+  const { data, isLoading } = trpc.escalation.list.useQuery({ status: statusFilter as any, offset, limit });
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
 
   const answerMutation = trpc.escalation.answer.useMutation({
@@ -63,175 +58,125 @@ export default function EscalationPage() {
 
   function handleAnswer(id: number) {
     if (!answerText.trim()) return;
-    answerMutation.mutate({
-      id,
-      answer: answerText,
-      category: answerCategory || undefined,
-    });
+    answerMutation.mutate({ id, answer: answerText, category: answerCategory || undefined });
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">에스컬레이션</h1>
-        {pendingData && pendingData.count > 0 && (
-          <span className="px-3 py-1 bg-red-500 text-white text-sm font-medium rounded-full">
-            {pendingData.count}건 대기중
-          </span>
-        )}
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-zinc-900">에스컬레이션</h1>
+          {pendingData && pendingData.count > 0 && (
+            <Badge variant="destructive" className="px-3 py-1 text-sm">{pendingData.count}건 대기중</Badge>
+          )}
+        </div>
+        <p className="mt-1 text-sm text-zinc-500">
+          봇이 답변하지 못한 질문을 확인합니다. 답변을 등록하면 지식 DB에 자동 학습됩니다.
+        </p>
       </div>
-      <p className="text-muted-foreground text-sm mb-6">
-        봇이 답변하지 못한 질문을 확인하고, 답변을 등록하면 자동으로 학습 + 카카오톡 회신됩니다.
-      </p>
 
-      {/* Status filter tabs */}
-      <div className="flex gap-1 mb-4 border-b">
+      {/* 상태 탭 */}
+      <div className="flex gap-1 mb-5 border-b border-zinc-200">
         {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.label}
-            onClick={() => { setStatusFilter(tab.value); setOffset(0); }}
-            className={`px-3 py-2 text-sm border-b-2 transition-colors ${
+          <button key={tab.label} onClick={() => { setStatusFilter(tab.value); setOffset(0); }}
+            className={`px-3 py-2.5 text-sm border-b-2 transition-colors -mb-px ${
               statusFilter === tab.value
-                ? 'border-primary text-foreground font-medium'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
+                ? 'border-blue-600 text-blue-600 font-medium'
+                : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}>
             {tab.label}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground py-8 text-center">로딩 중...</p>
-      ) : !data?.data || data.data.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground border rounded-lg">
-          <p className="text-lg mb-2">에스컬레이션이 없습니다.</p>
-          <p className="text-sm">봇이 답변하지 못한 질문이 발생하면 여기에 표시됩니다.</p>
+        <div className="flex items-center justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+        </div>
+      ) : !data?.data?.length ? (
+        <div className="flex flex-col items-center py-20 text-zinc-400">
+          <AlertCircle size={32} className="mb-3 text-zinc-300" />
+          <p className="text-sm">에스컬레이션이 없습니다</p>
+          <p className="mt-1 text-xs">봇이 답변하지 못한 질문이 발생하면 여기에 표시됩니다</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {data.data.map((item) => (
-            <div key={item.id} className="border rounded-lg p-4 bg-card">
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium">{item.user_message}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                    {statusBadge(item.status)}
-                    {item.category && (
-                      <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 text-xs">{item.category}</span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {item.user_name || item.user_id} · {item.room_id}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(item.created_at).toLocaleString('ko-KR')}
-                    </span>
-                    {item.confidence !== null && (
-                      <span className="text-xs text-muted-foreground">
-                        유사도: {Math.round((item.confidence ?? 0) * 100)}%
+          {data.data.map((item) => {
+            const badge = STATUS_BADGE[item.status] || STATUS_BADGE.pending;
+            return (
+              <Card key={item.id} className="p-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-zinc-900">{item.user_message}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                      {item.category && <Badge variant="outline">{item.category}</Badge>}
+                      <span className="text-xs text-zinc-400">
+                        {item.user_name || item.user_id} / {item.room_id}
                       </span>
+                      <span className="text-xs text-zinc-400">
+                        {new Date(item.created_at).toLocaleString('ko-KR')}
+                      </span>
+                      {item.confidence !== null && (
+                        <span className="text-xs text-zinc-400">유사도 {Math.round((item.confidence ?? 0) * 100)}%</span>
+                      )}
+                    </div>
+                    {item.bot_response && (
+                      <p className="mt-2 pl-3 border-l-2 border-zinc-200 text-sm text-zinc-500">{item.bot_response}</p>
+                    )}
+                    {item.answer && (
+                      <p className="mt-2 pl-3 border-l-2 border-emerald-300 text-sm text-emerald-700">{item.answer}</p>
                     )}
                   </div>
-                  {item.bot_response && (
-                    <p className="text-sm text-muted-foreground mt-2 pl-3 border-l-2 border-zinc-200">
-                      봇: {item.bot_response}
-                    </p>
-                  )}
-                  {item.answer && (
-                    <p className="text-sm text-green-700 mt-2 pl-3 border-l-2 border-green-300">
-                      답변: {item.answer}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-1.5 shrink-0">
                   {(item.status === 'pending' || item.status === 'assigned') && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setSelectedId(selectedId === item.id ? null : item.id);
-                          setAnswerText('');
-                          setAnswerCategory(item.category || '일반');
-                        }}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                      >
-                        답변하기
-                      </button>
-                      <button
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button size="sm" onClick={() => {
+                        setSelectedId(selectedId === item.id ? null : item.id);
+                        setAnswerText('');
+                        setAnswerCategory(item.category || '일반');
+                      }}>
+                        <MessageSquare size={14} /> 답변
+                      </Button>
+                      <Button size="sm" variant="secondary"
                         onClick={() => dismissMutation.mutate({ id: item.id })}
-                        disabled={dismissMutation.isPending}
-                        className="px-3 py-1.5 bg-zinc-200 text-zinc-600 text-sm rounded hover:bg-zinc-300"
-                      >
+                        disabled={dismissMutation.isPending}>
                         무시
-                      </button>
-                    </>
+                      </Button>
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Inline answer form */}
-              {selectedId === item.id && (
-                <div className="mt-3 pt-3 border-t space-y-2">
-                  <textarea
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.currentTarget.value)}
-                    placeholder="이 질문에 대한 올바른 답변을 입력하세요..."
-                    rows={3}
-                    className="w-full p-2 border rounded text-sm"
-                    autoFocus
-                  />
-                  <div className="flex gap-2 items-center">
-                    <select
-                      value={answerCategory}
-                      onChange={(e) => setAnswerCategory(e.currentTarget.value)}
-                      className="p-2 border rounded text-sm"
-                    >
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => handleAnswer(item.id)}
-                      disabled={answerMutation.isPending || !answerText.trim()}
-                      className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {answerMutation.isPending ? '처리중...' : '답변 등록 + 학습'}
-                    </button>
-                    <button
-                      onClick={() => setSelectedId(null)}
-                      className="px-4 py-2 bg-zinc-200 text-zinc-600 text-sm rounded"
-                    >
-                      취소
-                    </button>
+                {selectedId === item.id && (
+                  <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3">
+                    <Textarea value={answerText} onChange={(e) => setAnswerText(e.currentTarget.value)}
+                      placeholder="이 질문에 대한 올바른 답변을 입력하세요..." rows={3} autoFocus />
+                    <div className="flex gap-2 items-center">
+                      <Select value={answerCategory} onChange={(e) => setAnswerCategory(e.currentTarget.value)} className="w-40">
+                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </Select>
+                      <Button onClick={() => handleAnswer(item.id)}
+                        disabled={answerMutation.isPending || !answerText.trim()} size="sm" variant="success">
+                        {answerMutation.isPending ? '처리중...' : '답변 등록 + 학습'}
+                      </Button>
+                      <Button onClick={() => setSelectedId(null)} size="sm" variant="secondary">
+                        <X size={14} /> 취소
+                      </Button>
+                    </div>
+                    {answerMutation.error && <p className="text-sm text-red-600">{answerMutation.error.message}</p>}
                   </div>
-                  {answerMutation.error && (
-                    <p className="text-sm text-destructive">{answerMutation.error.message}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Pagination */}
       {data && data.total > limit && (
         <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">총 {data.total}건</p>
+          <p className="text-sm text-zinc-400">총 {data.total}건</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => setOffset(Math.max(0, offset - limit))}
-              disabled={offset === 0}
-              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
-            >
-              이전
-            </button>
-            <button
-              onClick={() => setOffset(offset + limit)}
-              disabled={data.data.length < limit}
-              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
-            >
-              다음
-            </button>
+            <Button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} variant="outline" size="sm">이전</Button>
+            <Button onClick={() => setOffset(offset + limit)} disabled={data.data.length < limit} variant="outline" size="sm">다음</Button>
           </div>
         </div>
       )}
