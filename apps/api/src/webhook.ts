@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { createLogger, getEnv } from '@kakao-cs-bot/config';
-import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository } from '@kakao-cs-bot/database';
+import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository } from '@kakao-cs-bot/database';
 import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
 
 const logger = createLogger('api:webhook');
@@ -9,6 +9,39 @@ const knowledgeRepo = new KnowledgeRepository();
 const conversationRepo = new ConversationRepository();
 const escalationRepo = new EscalationRepository();
 const proactiveRepo = new ProactiveRepository();
+const promptRepo = new PromptRepository();
+
+// 프롬프트 캐시 (5분 TTL)
+let cachedPrompt: { template: string; loadedAt: number } | null = null;
+const PROMPT_CACHE_TTL = 300000;
+
+async function getSystemPrompt(knowledgeContext: string): Promise<string> {
+  const now = Date.now();
+  if (!cachedPrompt || now - cachedPrompt.loadedAt > PROMPT_CACHE_TTL) {
+    const row = await promptRepo.get('default_answer').catch(() => null);
+    if (row?.template) {
+      cachedPrompt = { template: row.template, loadedAt: now };
+    }
+  }
+
+  if (cachedPrompt?.template) {
+    return cachedPrompt.template.replace('{{context}}', knowledgeContext);
+  }
+
+  // DB에서 로드 실패 시 기본 프롬프트
+  return `당신은 온라인 마케팅/광고 대행사의 CS 담당자입니다.
+고객(광고주)의 질문에 친절하고 전문적으로 답변합니다.
+
+참고 지식:
+${knowledgeContext}
+
+규칙:
+- 참고 지식을 바탕으로 정확하게 답변하세요
+- 모르는 것은 확인 후 안내하겠다고 하세요
+- 존댓말을 사용하세요
+- 2~3문장 이내로 간결하게 답변하세요
+- AI임을 밝히지 마세요`;
+}
 
 const ESCALATION_THRESHOLD = 0.5;
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
@@ -124,17 +157,7 @@ webhookApp.post('/message', async (c) => {
         .map(k => `Q: ${k.question}\nA: ${k.answer}`)
         .join('\n\n');
 
-      const systemPrompt = `당신은 광고 대행사의 CS 담당자입니다.
-고객(광고주)의 질문에 친절하고 프로페셔널하게 답변합니다.
-
-참고 지식:
-${knowledgeContext}
-
-규칙:
-- 참고 지식을 바탕으로 정확하게 답변하세요
-- 모르는 것은 확인 후 안내하겠다고 하세요
-- 존댓말을 사용하세요
-- 간결하게 답변하세요 (3문장 이내)`;
+      const systemPrompt = await getSystemPrompt(knowledgeContext);
 
       const response = await aiGateway.generate({
         prompt: message,
