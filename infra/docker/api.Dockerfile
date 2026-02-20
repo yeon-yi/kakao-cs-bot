@@ -1,18 +1,21 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Dependencies
+# Build dependencies (devDeps 포함 - tsc 빌드에 필요)
+FROM base AS builder
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/*/package.json packages/*/
+RUN npm ci
+COPY . .
+RUN npm run build -w packages/config -w packages/database -w packages/ai -w apps/api
+
+# Production dependencies only
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/*/package.json packages/*/
-RUN npm ci --only=production
-
-# Build
-FROM base AS builder
-COPY . .
-COPY --from=deps /app/node_modules ./node_modules
-RUN npm run build -w packages/config -w packages/database -w packages/ai -w apps/api
+RUN npm ci --omit=dev
 
 # Production
 FROM base AS runner
@@ -24,6 +27,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=apiuser:nodejs /app/apps/api/dist ./dist
 COPY --from=builder --chown=apiuser:nodejs /app/packages ./packages
 COPY --from=deps --chown=apiuser:nodejs /app/node_modules ./node_modules
+COPY --from=deps --chown=apiuser:nodejs /app/package.json ./package.json
 
 USER apiuser
 EXPOSE 3000

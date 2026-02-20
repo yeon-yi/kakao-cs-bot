@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   transpilePackages: ['@kakao-cs-bot/config'],
   typescript: {
     ignoreBuildErrors: true,
