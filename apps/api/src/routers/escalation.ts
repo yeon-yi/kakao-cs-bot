@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import Redis from 'ioredis';
 import { router, protectedProcedure } from '../trpc';
-import { EscalationRepository, KnowledgeRepository, getSupabaseAdmin } from '@kakao-cs-bot/database';
+import { EscalationRepository, KnowledgeRepository, query } from '@kakao-cs-bot/database';
 import { embedder } from '@kakao-cs-bot/ai';
 import { getEnv, createLogger } from '@kakao-cs-bot/config';
 
@@ -135,9 +135,6 @@ export const escalationRouter = router({
 
   // Staff list for assignee selection
   staffList: protectedProcedure.query(async () => {
-    const db = getSupabaseAdmin();
-    const { data, error } = await db.from('company_staff').select('id, real_name, department, kakao_name').eq('is_active', true).order('real_name');
-    if (error) throw error;
-    return data ?? [];
+    return query('SELECT id, real_name, department, kakao_name FROM company_staff WHERE is_active = true ORDER BY real_name');
   }),
 });

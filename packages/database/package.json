@@ -9,7 +9,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
+    "pg": "^8.13.0",
     "@kakao-cs-bot/config": "*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
   }
 }

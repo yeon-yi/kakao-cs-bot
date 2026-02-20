@@ -1,24 +1,35 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import { getEnv } from '@kakao-cs-bot/config';
-import type { Database } from './types';
 
-let _client: SupabaseClient<Database> | null = null;
-let _adminClient: SupabaseClient<Database> | null = null;
+const { Pool } = pg;
 
-export function getSupabase(): SupabaseClient<Database> {
-  if (_client) return _client;
+let _pool: pg.Pool | null = null;
+
+export function getPool(): pg.Pool {
+  if (_pool) return _pool;
   const env = getEnv();
-  _client = createClient<Database>(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-    auth: { persistSession: false },
+  _pool = new Pool({
+    connectionString: env.DATABASE_URL,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
-  return _client;
+  return _pool;
 }
 
-export function getSupabaseAdmin(): SupabaseClient<Database> {
-  if (_adminClient) return _adminClient;
-  const env = getEnv();
-  _adminClient = createClient<Database>(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
-  return _adminClient;
+export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
+  const pool = getPool();
+  const result = await pool.query(text, params);
+  return result.rows as T[];
+}
+
+export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
+  const rows = await query<T>(text, params);
+  return rows[0] ?? null;
+}
+
+export async function queryCount(text: string, params?: any[]): Promise<number> {
+  const pool = getPool();
+  const result = await pool.query(text, params);
+  return parseInt(result.rows[0]?.count ?? '0', 10);
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
-import { getSupabaseAdmin } from '@kakao-cs-bot/database';
+import { query, queryOne } from '@kakao-cs-bot/database';
 import { createLogger } from '@kakao-cs-bot/config';
 
 const logger = createLogger('api:staff');
@@ -12,25 +12,27 @@ export const staffRouter = router({
       activeOnly: z.boolean().default(true),
     }))
     .query(async ({ input }) => {
-      const db = getSupabaseAdmin();
-      let query = db.from('company_staff').select('*');
-      if (input.activeOnly) query = query.eq('is_active', true);
-      if (input.search) {
-        query = query.or(`real_name.ilike.%${input.search}%,kakao_name.ilike.%${input.search}%,department.ilike.%${input.search}%`);
+      const conditions: string[] = [];
+      const values: any[] = [];
+      let idx = 1;
+
+      if (input.activeOnly) {
+        conditions.push(`is_active = true`);
       }
-      query = query.order('real_name');
-      const { data, error } = await query;
-      if (error) throw error;
-      return data ?? [];
+      if (input.search) {
+        conditions.push(`(real_name ILIKE $${idx} OR kakao_name ILIKE $${idx} OR department ILIKE $${idx})`);
+        values.push(`%${input.search}%`);
+        idx++;
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      return query(`SELECT * FROM company_staff ${where} ORDER BY real_name`, values);
     }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
-      const db = getSupabaseAdmin();
-      const { data, error } = await db.from('company_staff').select('*').eq('id', input.id).single();
-      if (error) throw error;
-      return data;
+      return queryOne('SELECT * FROM company_staff WHERE id = $1', [input.id]);
     }),
 
   create: protectedProcedure
@@ -44,18 +46,15 @@ export const staffRouter = router({
       position: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = getSupabaseAdmin();
-      const { data, error } = await db.from('company_staff').insert({
-        real_name: input.realName,
-        kakao_name: input.kakaoName || null,
-        kakao_user_id: input.kakaoUserId || null,
-        email: input.email || null,
-        phone: input.phone || null,
-        department: input.department || null,
-        position: input.position || null,
-        added_by: ctx.userId,
-      }).select().single();
-      if (error) throw error;
+      const data = await queryOne(
+        `INSERT INTO company_staff (real_name, kakao_name, kakao_user_id, email, phone, department, position, added_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [
+          input.realName, input.kakaoName || null, input.kakaoUserId || null,
+          input.email || null, input.phone || null,
+          input.department || null, input.position || null, ctx.userId,
+        ]
+      );
       logger.info('Staff created', { id: data.id, name: input.realName });
       return data;
     }),
@@ -72,19 +71,31 @@ export const staffRouter = router({
       position: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = getSupabaseAdmin();
       const { id, ...updates } = input;
-      const dbUpdates: Record<string, unknown> = {};
-      if (updates.realName !== undefined) dbUpdates.real_name = updates.realName;
-      if (updates.kakaoName !== undefined) dbUpdates.kakao_name = updates.kakaoName || null;
-      if (updates.kakaoUserId !== undefined) dbUpdates.kakao_user_id = updates.kakaoUserId || null;
-      if (updates.email !== undefined) dbUpdates.email = updates.email || null;
-      if (updates.phone !== undefined) dbUpdates.phone = updates.phone || null;
-      if (updates.department !== undefined) dbUpdates.department = updates.department || null;
-      if (updates.position !== undefined) dbUpdates.position = updates.position || null;
+      const setClauses: string[] = [];
+      const values: any[] = [];
+      let idx = 1;
 
-      const { data, error } = await db.from('company_staff').update(dbUpdates).eq('id', id).select().single();
-      if (error) throw error;
+      const fieldMap: Record<string, string> = {
+        realName: 'real_name', kakaoName: 'kakao_name', kakaoUserId: 'kakao_user_id',
+        email: 'email', phone: 'phone', department: 'department', position: 'position',
+      };
+
+      for (const [key, dbCol] of Object.entries(fieldMap)) {
+        if ((updates as any)[key] !== undefined) {
+          setClauses.push(`${dbCol} = $${idx}`);
+          values.push((updates as any)[key] || null);
+          idx++;
+        }
+      }
+
+      if (setClauses.length === 0) return queryOne('SELECT * FROM company_staff WHERE id = $1', [id]);
+
+      values.push(id);
+      const data = await queryOne(
+        `UPDATE company_staff SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+        values
+      );
       logger.info('Staff updated', { id });
       return data;
     }),
@@ -95,9 +106,10 @@ export const staffRouter = router({
       isActive: z.boolean(),
     }))
     .mutation(async ({ input }) => {
-      const db = getSupabaseAdmin();
-      const { data, error } = await db.from('company_staff').update({ is_active: input.isActive }).eq('id', input.id).select().single();
-      if (error) throw error;
+      const data = await queryOne(
+        'UPDATE company_staff SET is_active = $1 WHERE id = $2 RETURNING *',
+        [input.isActive, input.id]
+      );
       logger.info('Staff toggled', { id: input.id, isActive: input.isActive });
       return data;
     }),

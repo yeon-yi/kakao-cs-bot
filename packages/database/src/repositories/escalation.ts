@@ -1,115 +1,135 @@
-import { getSupabaseAdmin } from '../client';
+import { query, queryOne, queryCount } from '../client';
 import type { Database } from '../types';
 
 type EscalationInsert = Database['public']['Tables']['escalations']['Insert'];
 
 export class EscalationRepository {
-  private get db() { return getSupabaseAdmin(); }
-
   async create(input: EscalationInsert) {
-    const { data, error } = await this.db.from('escalations').insert(input).select().single();
-    if (error) throw error;
-    return data;
+    const row = await queryOne(
+      `INSERT INTO escalations (conversation_id, room_id, user_id, user_name, user_message, bot_response, category, confidence, status, assigned_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [
+        input.conversation_id ?? null, input.room_id, input.user_id,
+        input.user_name ?? null, input.user_message, input.bot_response ?? null,
+        input.category ?? null, input.confidence ?? null,
+        input.status ?? 'pending', input.assigned_to ?? null,
+      ]
+    );
+    return row;
   }
 
   async getById(id: number) {
-    const { data, error } = await this.db.from('escalations').select('*').eq('id', id).single();
-    if (error) return null;
-    return data;
+    return queryOne('SELECT * FROM escalations WHERE id = $1', [id]);
   }
 
   async list(options?: { status?: string; category?: string; assignedTo?: number; offset?: number; limit?: number }) {
-    let query = this.db.from('escalations').select('*', { count: 'exact' });
-    if (options?.status) query = query.eq('status', options.status);
-    if (options?.category) query = query.eq('category', options.category);
-    if (options?.assignedTo) query = query.eq('assigned_to', options.assignedTo);
-    query = query.order('created_at', { ascending: false });
-    const offset = options?.offset ?? 0;
+    const conditions: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (options?.status) {
+      conditions.push(`status = $${idx}`);
+      values.push(options.status);
+      idx++;
+    }
+    if (options?.category) {
+      conditions.push(`category = $${idx}`);
+      values.push(options.category);
+      idx++;
+    }
+    if (options?.assignedTo) {
+      conditions.push(`assigned_to = $${idx}`);
+      values.push(options.assignedTo);
+      idx++;
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = options?.limit ?? 20;
-    query = query.range(offset, offset + limit - 1);
-    const { data, error, count } = await query;
-    if (error) throw error;
-    return { data: data ?? [], total: count ?? 0 };
+    const offset = options?.offset ?? 0;
+
+    const countValues = [...values];
+    values.push(limit, offset);
+
+    const data = await query(
+      `SELECT * FROM escalations ${where} ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+      values
+    );
+
+    const total = await queryCount(
+      `SELECT COUNT(*) as count FROM escalations ${where}`,
+      countValues
+    );
+
+    return { data, total };
   }
 
   async assign(id: number, staffId: number) {
-    const { data, error } = await this.db.from('escalations').update({
-      assigned_to: staffId,
-      assigned_at: new Date().toISOString(),
-      status: 'assigned',
-    }).eq('id', id).select().single();
-    if (error) throw error;
-    return data;
+    return queryOne(
+      `UPDATE escalations SET assigned_to = $1, assigned_at = NOW(), status = 'assigned' WHERE id = $2 RETURNING *`,
+      [staffId, id]
+    );
   }
 
   async answer(id: number, answer: string, answeredBy: string) {
-    const { data, error } = await this.db.from('escalations').update({
-      answer,
-      answered_by: answeredBy,
-      answered_at: new Date().toISOString(),
-      status: 'answered',
-    }).eq('id', id).select().single();
-    if (error) throw error;
-    return data;
+    return queryOne(
+      `UPDATE escalations SET answer = $1, answered_by = $2, answered_at = NOW(), status = 'answered' WHERE id = $3 RETURNING *`,
+      [answer, answeredBy, id]
+    );
   }
 
   async markLearned(id: number, knowledgeId: string) {
-    const { error } = await this.db.from('escalations').update({
-      knowledge_id: knowledgeId,
-      status: 'learned',
-    }).eq('id', id);
-    if (error) throw error;
+    await query(
+      `UPDATE escalations SET knowledge_id = $1, status = 'learned' WHERE id = $2`,
+      [knowledgeId, id]
+    );
   }
 
   async markReplied(id: number) {
-    const { error } = await this.db.from('escalations').update({
-      replied_at: new Date().toISOString(),
-    }).eq('id', id);
-    if (error) throw error;
+    await query('UPDATE escalations SET replied_at = NOW() WHERE id = $1', [id]);
   }
 
   async dismiss(id: number) {
-    const { error } = await this.db.from('escalations').update({
-      status: 'dismissed',
-    }).eq('id', id);
-    if (error) throw error;
+    await query(`UPDATE escalations SET status = 'dismissed' WHERE id = $1`, [id]);
   }
 
   async pendingCount() {
-    const { count, error } = await this.db.from('escalations')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'assigned']);
-    if (error) throw error;
-    return count ?? 0;
+    return queryCount(
+      `SELECT COUNT(*) as count FROM escalations WHERE status IN ('pending', 'assigned')`
+    );
   }
 
   // Category assignees
   async getAssignees() {
-    const { data, error } = await this.db.from('category_assignees')
-      .select('*, company_staff(id, real_name, department, kakao_name)')
-      .order('category');
-    if (error) throw error;
-    return data ?? [];
+    return query(
+      `SELECT ca.*, json_build_object('id', cs.id, 'real_name', cs.real_name, 'department', cs.department, 'kakao_name', cs.kakao_name) as company_staff
+       FROM category_assignees ca
+       JOIN company_staff cs ON cs.id = ca.staff_id
+       ORDER BY ca.category`
+    );
   }
 
   async setAssignee(category: string, staffId: number) {
-    const { data, error } = await this.db.from('category_assignees').upsert({
-      category, staff_id: staffId,
-    }, { onConflict: 'category' }).select().single();
-    if (error) throw error;
-    return data;
+    return queryOne(
+      `INSERT INTO category_assignees (category, staff_id)
+       VALUES ($1, $2)
+       ON CONFLICT (category) DO UPDATE SET staff_id = EXCLUDED.staff_id
+       RETURNING *`,
+      [category, staffId]
+    );
   }
 
   async removeAssignee(category: string) {
-    const { error } = await this.db.from('category_assignees').delete().eq('category', category);
-    if (error) throw error;
+    await query('DELETE FROM category_assignees WHERE category = $1', [category]);
   }
 
   async getAssigneeByCategory(category: string) {
-    const { data } = await this.db.from('category_assignees')
-      .select('*, company_staff(id, real_name, kakao_name)')
-      .eq('category', category)
-      .single();
-    return data;
+    return queryOne(
+      `SELECT ca.*, json_build_object('id', cs.id, 'real_name', cs.real_name, 'kakao_name', cs.kakao_name) as company_staff
+       FROM category_assignees ca
+       JOIN company_staff cs ON cs.id = ca.staff_id
+       WHERE ca.category = $1`,
+      [category]
+    );
   }
 }

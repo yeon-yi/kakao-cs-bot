@@ -21,9 +21,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().min(1).max(65535).default(3000),
   CORS_ORIGIN: z.string().default('http://localhost:3001'),
 
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  DATABASE_URL: z.string().min(1),
 
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
@@ -91,7 +89,7 @@ export function getEnv(): Env {
 
 export function maskSensitive(env: Env): Record<string, string> {
   const masked: Record<string, string> = {};
-  const sensitiveKeys = ['SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY','GEMINI_API_KEY','ANTHROPIC_API_KEY','OPENAI_API_KEY','JWT_SECRET','ENCRYPTION_KEY','DD_API_KEY','NEXTAUTH_SECRET'];
+  const sensitiveKeys = ['DATABASE_URL','GEMINI_API_KEY','ANTHROPIC_API_KEY','OPENAI_API_KEY','JWT_SECRET','ENCRYPTION_KEY','DD_API_KEY','NEXTAUTH_SECRET'];
 
   for (const [key, value] of Object.entries(env)) {
     if (sensitiveKeys.includes(key) && typeof value === 'string' && value.length > 10) {

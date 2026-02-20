@@ -1,74 +1,91 @@
-import { getSupabaseAdmin } from '../client';
+import { query, queryOne, getPool } from '../client';
 
 export class ConfigRepository {
-  private get db() { return getSupabaseAdmin(); }
-
   async get(key: string) {
-    const { data } = await this.db.from('app_config').select('*').eq('key', key).single();
-    return data;
+    return queryOne('SELECT * FROM app_config WHERE key = $1', [key]);
   }
 
   async list(category?: string) {
-    let query = this.db.from('app_config').select('*');
-    if (category) query = query.eq('category', category);
-    const { data, error } = await query.order('key');
-    if (error) throw error;
-    return data ?? [];
+    if (category) {
+      return query('SELECT * FROM app_config WHERE category = $1 ORDER BY key', [category]);
+    }
+    return query('SELECT * FROM app_config ORDER BY key');
   }
 
   async set(key: string, value: unknown, updatedBy?: string) {
-    const { error } = await this.db.from('app_config').upsert({
-      key, value: value as any, updated_by: updatedBy,
-    });
-    if (error) throw error;
+    await query(
+      `INSERT INTO app_config (key, value, updated_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by`,
+      [key, JSON.stringify(value), updatedBy ?? null]
+    );
   }
 }
 
 export class PromptRepository {
-  private get db() { return getSupabaseAdmin(); }
-
   async get(name: string) {
-    const { data } = await this.db.from('prompt_templates').select('*').eq('name', name).eq('is_active', true).single();
-    return data;
+    return queryOne(
+      'SELECT * FROM prompt_templates WHERE name = $1 AND is_active = true',
+      [name]
+    );
   }
 
   async list() {
-    const { data, error } = await this.db.from('prompt_templates').select('*').eq('is_active', true).order('name');
-    if (error) throw error;
-    return data ?? [];
+    return query('SELECT * FROM prompt_templates WHERE is_active = true ORDER BY name');
   }
 
   async update(name: string, template: string, reason: string, changedBy: string) {
     const current = await this.get(name);
     if (!current) throw new Error(`Prompt not found: ${name}`);
 
-    // Save history
-    await this.db.from('prompt_history').insert({
-      template_id: current.id, version: current.version, template: current.template,
-      change_reason: reason, changed_by: changedBy,
-    });
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Update template
-    const { data, error } = await this.db.from('prompt_templates').update({
-      template, version: current.version + 1,
-    }).eq('name', name).select().single();
-    if (error) throw error;
-    return data;
+      // Save history
+      await client.query(
+        `INSERT INTO prompt_history (template_id, version, template, change_reason, changed_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [current.id, current.version, current.template, reason, changedBy]
+      );
+
+      // Update template
+      const { rows } = await client.query(
+        `UPDATE prompt_templates SET template = $1, version = $2 WHERE name = $3 RETURNING *`,
+        [template, current.version + 1, name]
+      );
+
+      await client.query('COMMIT');
+      return rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
 export class AnalyticsRepository {
-  private get db() { return getSupabaseAdmin(); }
-
   async getDaily(startDate: string, endDate: string) {
-    const { data, error } = await this.db.from('analytics_daily').select('*')
-      .gte('date', startDate).lte('date', endDate).order('date');
-    if (error) throw error;
-    return data ?? [];
+    return query(
+      'SELECT * FROM analytics_daily WHERE date >= $1 AND date <= $2 ORDER BY date',
+      [startDate, endDate]
+    );
   }
 
   async upsertDaily(date: string, updates: Record<string, unknown>) {
-    const { error } = await this.db.from('analytics_daily').upsert({ date, ...updates } as any, { onConflict: 'date' });
-    if (error) throw error;
+    const keys = Object.keys(updates);
+    const values = Object.values(updates);
+    const setClauses = keys.map((k, i) => `${k} = EXCLUDED.${k}`).join(', ');
+    const colNames = ['date', ...keys].join(', ');
+    const placeholders = ['$1', ...keys.map((_, i) => `$${i + 2}`)].join(', ');
+
+    await query(
+      `INSERT INTO analytics_daily (${colNames}) VALUES (${placeholders})
+       ON CONFLICT (date) DO UPDATE SET ${setClauses}`,
+      [date, ...values]
+    );
   }
 }
