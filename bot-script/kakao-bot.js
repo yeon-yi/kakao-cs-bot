@@ -27,6 +27,9 @@ var ALLOWED_ROOMS = [];
 // 무시할 발신자 목록
 var IGNORED_SENDERS = [BOT_NAME];
 
+// 관리자 이름 (관리 명령어 사용 가능)
+var ADMIN_NAMES = ["관리자"];
+
 // ============================================
 // 운영 설정
 // ============================================
@@ -35,19 +38,28 @@ var OP_START_MIN = 50;
 var OP_END_HOUR = 18;
 var OP_END_MIN = 30;
 
-// 최소/최대 응답 대기시간 (ms) - 서버에서도 계산하지만 클라이언트에서 추가 보정
+// 최소/최대 응답 대기시간 (ms)
 var MIN_EXTRA_DELAY = 500;
 var MAX_EXTRA_DELAY = 2000;
 
 // 같은 방에 연속 응답 최소 간격 (ms)
 var ROOM_COOLDOWN = 5000;
 
+// 프로액티브 폴링 간격 (ms) - 3분
+var PROACTIVE_POLL_INTERVAL = 180000;
+
+// 차단 방 캐시 TTL (ms) - 10분
+var BLOCK_CACHE_TTL = 600000;
+
 // ============================================
 // 내부 상태
 // ============================================
-var lastResponseTime = {};  // 방별 마지막 응답 시간
-var errorCount = 0;         // 연속 에러 횟수
-var MAX_ERRORS = 5;         // 연속 에러 시 일시 중지
+var lastResponseTime = {};
+var errorCount = 0;
+var MAX_ERRORS = 5;
+var blockedRooms = {};
+var proactiveTimer = null;
+var botEnabled = true;
 
 // ============================================
 // 유틸리티 함수
@@ -87,18 +99,30 @@ function isIgnoredSender(sender) {
     return false;
 }
 
+function isAdmin(sender) {
+    for (var i = 0; i < ADMIN_NAMES.length; i++) {
+        if (ADMIN_NAMES[i] === sender) return true;
+    }
+    return false;
+}
+
 function isCooldown(room) {
     var last = lastResponseTime[room] || 0;
     return (Date.now() - last) < ROOM_COOLDOWN;
 }
 
+function isRoomBlocked(room) {
+    var cache = blockedRooms[room];
+    if (cache && (Date.now() - cache.checkedAt) < BLOCK_CACHE_TTL) {
+        return cache.blocked;
+    }
+    return false;
+}
+
 function shouldSkipMessage(msg) {
-    // 너무 짧은 메시지 (이모지, ㅋㅋ 등)
     if (msg.length < 2) return true;
-    // 단순 반응
     if (/^[ㅋㅎㅠㅜㅇ]+$/.test(msg)) return true;
     if (/^(ㅇㅇ|ㅇㅋ|ㅎㅇ|ㄴㄴ|ㄱㄱ|ㄱㅅ)$/.test(msg)) return true;
-    // 사진/동영상 알림
     if (msg === "사진" || msg === "동영상" || msg === "이모티콘") return true;
     return false;
 }
@@ -120,7 +144,7 @@ function callAPI(room, sender, message, isGroupChat) {
             }))
             .ignoreContentType(true)
             .ignoreHttpErrors(true)
-            .timeout(30000)  // 30초 타임아웃 (AI 처리 시간 고려)
+            .timeout(30000)
             .method(org.jsoup.Connection.Method.POST)
             .execute();
 
@@ -148,11 +172,166 @@ function checkAPIStatus() {
             .method(org.jsoup.Connection.Method.GET)
             .execute();
 
-        var data = JSON.parse(conn.body());
-        return data;
+        return JSON.parse(conn.body());
     } catch (e) {
         return null;
     }
+}
+
+function fetchPendingProactive() {
+    try {
+        var conn = org.jsoup.Jsoup.connect(API_URL + "/webhook/proactive/pending?limit=5")
+            .header("X-API-Key", API_KEY)
+            .ignoreContentType(true)
+            .ignoreHttpErrors(true)
+            .timeout(10000)
+            .method(org.jsoup.Connection.Method.GET)
+            .execute();
+
+        if (conn.statusCode() !== 200) return [];
+        var data = JSON.parse(conn.body());
+        return data.messages || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function reportProactive(id, status, errorMsg) {
+    try {
+        var body = { id: id, status: status };
+        if (errorMsg) body.error = errorMsg;
+
+        org.jsoup.Jsoup.connect(API_URL + "/webhook/proactive/report")
+            .header("Content-Type", "application/json")
+            .header("X-API-Key", API_KEY)
+            .requestBody(JSON.stringify(body))
+            .ignoreContentType(true)
+            .ignoreHttpErrors(true)
+            .timeout(5000)
+            .method(org.jsoup.Connection.Method.POST)
+            .execute();
+    } catch (e) {
+        Log.e("[CS봇] Report failed: " + e);
+    }
+}
+
+function checkBlockStatus(room) {
+    try {
+        var conn = org.jsoup.Jsoup.connect(API_URL + "/webhook/blocks/check?roomId=" + encodeURIComponent(room))
+            .header("X-API-Key", API_KEY)
+            .ignoreContentType(true)
+            .ignoreHttpErrors(true)
+            .timeout(5000)
+            .method(org.jsoup.Connection.Method.GET)
+            .execute();
+
+        if (conn.statusCode() === 200) {
+            var data = JSON.parse(conn.body());
+            blockedRooms[room] = { blocked: data.blocked, checkedAt: Date.now() };
+            return data.blocked;
+        }
+    } catch (e) {}
+    return false;
+}
+
+// ============================================
+// 프로액티브 메시지 폴링
+// ============================================
+
+function startProactivePolling() {
+    if (proactiveTimer) return;
+
+    proactiveTimer = new java.util.Timer();
+    proactiveTimer.scheduleAtFixedRate(new java.util.TimerTask({
+        run: function() {
+            try {
+                if (!botEnabled) return;
+                if (!isOperatingHours() || !isWeekday()) return;
+
+                var messages = fetchPendingProactive();
+                if (messages.length === 0) return;
+
+                for (var i = 0; i < messages.length; i++) {
+                    var msg = messages[i];
+                    try {
+                        var delay = randomDelay(2000, 5000);
+                        java.lang.Thread.sleep(delay);
+
+                        // 봇 앱의 replier는 response 함수에서만 사용 가능
+                        // 프로액티브 전송은 Api.replyRoom 사용
+                        Api.replyRoom(msg.room_id, msg.message);
+
+                        reportProactive(msg.id, "sent");
+                        Log.d("[CS봇] 프로액티브 전송: " + msg.room_id);
+                    } catch (e) {
+                        reportProactive(msg.id, "failed", String(e));
+                        Log.e("[CS봇] 프로액티브 실패: " + msg.room_id + " - " + e);
+                    }
+                }
+            } catch (e) {
+                Log.e("[CS봇] 프로액티브 폴링 에러: " + e);
+            }
+        }
+    }), PROACTIVE_POLL_INTERVAL, PROACTIVE_POLL_INTERVAL);
+
+    Log.i("[CS봇] 프로액티브 폴링 시작 (간격: " + (PROACTIVE_POLL_INTERVAL / 1000) + "초)");
+}
+
+function stopProactivePolling() {
+    if (proactiveTimer) {
+        proactiveTimer.cancel();
+        proactiveTimer = null;
+        Log.i("[CS봇] 프로액티브 폴링 중지");
+    }
+}
+
+// ============================================
+// 관리자 명령어
+// ============================================
+
+function handleAdminCommand(msg, sender, replier) {
+    if (!isAdmin(sender)) return false;
+
+    if (msg === "!봇상태") {
+        var status = checkAPIStatus();
+        var text = "[CS봇 상태]\n";
+        text += "봇 활성: " + (botEnabled ? "켜짐" : "꺼짐") + "\n";
+        text += "운영시간: " + (isOperatingHours() ? "운영 중" : "운영 외") + "\n";
+        text += "평일: " + (isWeekday() ? "예" : "아니오") + "\n";
+        text += "에러 카운트: " + errorCount + "/" + MAX_ERRORS + "\n";
+        text += "프로액티브: " + (proactiveTimer ? "폴링 중" : "중지") + "\n";
+        if (status) {
+            text += "서버 상태: " + status.status + "\n";
+            text += "서버 시간: " + status.timestamp;
+        } else {
+            text += "서버 상태: 연결 실패";
+        }
+        replier.reply(text);
+        return true;
+    }
+
+    if (msg === "!봇켜기") {
+        botEnabled = true;
+        errorCount = 0;
+        startProactivePolling();
+        replier.reply("[CS봇] 봇이 활성화되었습니다.");
+        return true;
+    }
+
+    if (msg === "!봇끄기") {
+        botEnabled = false;
+        stopProactivePolling();
+        replier.reply("[CS봇] 봇이 비활성화되었습니다.");
+        return true;
+    }
+
+    if (msg === "!에러초기화") {
+        errorCount = 0;
+        replier.reply("[CS봇] 에러 카운트가 초기화되었습니다.");
+        return true;
+    }
+
+    return false;
 }
 
 // ============================================
@@ -160,6 +339,12 @@ function checkAPIStatus() {
 // ============================================
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
+    // 관리자 명령어 처리 (필터 무시)
+    if (msg.charAt(0) === "!" && handleAdminCommand(msg, sender, replier)) return;
+
+    // 봇 비활성화 상태
+    if (!botEnabled) return;
+
     // 기본 필터링
     if (isIgnoredSender(sender)) return;
     if (!isAllowedRoom(room)) return;
@@ -169,10 +354,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     // 운영 시간 + 평일 체크
     if (!isOperatingHours() || !isWeekday()) return;
 
+    // 차단된 방 체크 (캐시)
+    if (isRoomBlocked(room)) return;
+
     // 연속 에러 시 일시 중지 (5분 후 자동 복구)
     if (errorCount >= MAX_ERRORS) {
         if (!this._errorPauseStart) this._errorPauseStart = Date.now();
-        if (Date.now() - this._errorPauseStart < 300000) return;  // 5분
+        if (Date.now() - this._errorPauseStart < 300000) return;
         errorCount = 0;
         this._errorPauseStart = null;
     }
@@ -181,6 +369,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     new java.lang.Thread(new java.lang.Runnable({
         run: function() {
             try {
+                // 차단 여부 서버 확인 (캐시 만료 시)
+                var cache = blockedRooms[room];
+                if (!cache || (Date.now() - cache.checkedAt) >= BLOCK_CACHE_TTL) {
+                    if (checkBlockStatus(room)) return;
+                }
+
                 var result = callAPI(room, sender, msg, isGroupChat);
 
                 if (!result) {
@@ -188,27 +382,20 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     return;
                 }
 
-                // 에러 카운트 리셋
                 errorCount = 0;
 
-                // 응답이 없는 경우 (운영시간 외, rate limit 등)
                 if (!result.answer) return;
 
-                // 서버 제안 딜레이 + 클라이언트 추가 딜레이
                 var serverDelay = result.delay || 3000;
                 var extraDelay = randomDelay(MIN_EXTRA_DELAY, MAX_EXTRA_DELAY);
                 var totalDelay = serverDelay + extraDelay;
 
-                // 인간다운 대기
                 java.lang.Thread.sleep(totalDelay);
 
-                // 답장
                 replier.reply(result.answer);
 
-                // 쿨다운 업데이트
                 lastResponseTime[room] = Date.now();
 
-                // 로그
                 Log.d("[CS봇] " + room + " | " + sender + " → " +
                     (result.escalated ? "[에스컬레이션]" : "[응답]") +
                     " | 유사도:" + Math.round((result.confidence || 0) * 100) + "%" +
@@ -224,13 +411,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 }
 
 // ============================================
-// 관리 명령어 (관리자용)
+// 초기화
 // ============================================
 
-// 봇 상태 확인: "!봇상태" 입력
-// 위 response 함수 위에 별도 체크 추가하려면:
-// if (msg === "!봇상태") { ... }
+startProactivePolling();
 
 Log.i("[CS봇] 스크립트 로드 완료");
 Log.i("[CS봇] API: " + API_URL);
 Log.i("[CS봇] 운영시간: " + OP_START_HOUR + ":" + OP_START_MIN + " ~ " + OP_END_HOUR + ":" + OP_END_MIN);
+Log.i("[CS봇] 관리 명령어: !봇상태, !봇켜기, !봇끄기, !에러초기화");
