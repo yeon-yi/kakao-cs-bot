@@ -1,7 +1,7 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Build dependencies (devDeps 포함 - tsc 빌드에 필요)
+# Build (esbuild로 단일 파일 번들)
 FROM base AS builder
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
@@ -13,7 +13,14 @@ COPY packages/database/package.json packages/database/
 COPY packages/ai/package.json packages/ai/
 RUN npm ci
 COPY . .
-RUN npm run build -w packages/config -w packages/database -w packages/ai -w apps/bot
+RUN npx esbuild apps/bot/src/worker.ts \
+  --bundle --platform=node --target=node20 \
+  --outfile=dist/worker.js \
+  --external:@supabase/supabase-js \
+  --external:ioredis \
+  --external:openai \
+  --external:@anthropic-ai/sdk \
+  --external:@google/generative-ai
 
 # Production dependencies only
 FROM base AS deps
@@ -34,8 +41,7 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 botuser
 
-COPY --from=builder --chown=botuser:nodejs /app/apps/bot/dist ./dist
-COPY --from=builder --chown=botuser:nodejs /app/packages ./packages
+COPY --from=builder --chown=botuser:nodejs /app/dist/worker.js ./worker.js
 COPY --from=deps --chown=botuser:nodejs /app/node_modules ./node_modules
 COPY --from=deps --chown=botuser:nodejs /app/package.json ./package.json
 
@@ -44,4 +50,4 @@ USER botuser
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD node -e "process.exit(0)" || exit 1
 
-CMD ["node", "dist/worker.js"]
+CMD ["node", "worker.js"]
