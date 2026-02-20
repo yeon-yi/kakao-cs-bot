@@ -3,6 +3,8 @@ WORKDIR /app
 
 # Build (devDeps 포함 - next build에 필요)
 FROM base AS builder
+ARG NEXT_PUBLIC_API_URL=http://localhost:3000
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/admin/package.json apps/admin/
