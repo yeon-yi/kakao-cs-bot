@@ -1,9 +1,9 @@
-name: Build Android APK
+name: Build CS봇 APK
 
 on:
   push:
     paths:
-      - 'apps/kakao-bot-app/**'
+      - 'android-bot/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/kakao-bot-app
+        working-directory: android-bot
 
     steps:
     - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '8.11.1'
+        gradle-version: '8.5'
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -37,8 +37,8 @@ jobs:
     - name: Install Android SDK components
       run: |
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-          "platforms;android-35" \
-          "build-tools;35.0.0"
+          "platforms;android-34" \
+          "build-tools;34.0.0"
 
     - name: Build Debug APK
       run: gradle assembleDebug --no-daemon --warning-mode all
@@ -46,6 +46,6 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: csbot-debug-apk
-        path: apps/kakao-bot-app/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 30
+        name: CSBot-debug-apk
+        path: android-bot/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 90
