@@ -16,7 +16,7 @@ COPY . .
 RUN npx esbuild apps/api/src/server.ts \
   --bundle --platform=node --target=node20 \
   --outfile=dist/server.js \
-  --external:@supabase/supabase-js \
+  --external:pg \
   --external:ioredis \
   --external:openai \
   --external:@anthropic-ai/sdk \

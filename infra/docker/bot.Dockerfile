@@ -16,7 +16,7 @@ COPY . .
 RUN npx esbuild apps/bot/src/worker.ts \
   --bundle --platform=node --target=node20 \
   --outfile=dist/worker.js \
-  --external:@supabase/supabase-js \
+  --external:pg \
   --external:ioredis \
   --external:openai \
   --external:@anthropic-ai/sdk \

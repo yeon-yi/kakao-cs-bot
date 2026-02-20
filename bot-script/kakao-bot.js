@@ -15,7 +15,7 @@
 // ============================================
 // 설정 (반드시 변경하세요)
 // ============================================
-var API_URL = "https://carefree-analysis-production-7389.up.railway.app";
+var API_URL = "http://1.234.83.118:3000";
 var API_KEY = "csbot-webhook-2026!secret";
 
 // 봇 이름 (자기 메시지 필터링용)
