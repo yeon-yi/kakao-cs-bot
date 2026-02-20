@@ -8,7 +8,9 @@ COPY apps/api/package.json apps/api/
 COPY apps/admin/package.json apps/admin/
 COPY apps/bot/package.json apps/bot/
 COPY apps/cli/package.json apps/cli/
-COPY packages/*/package.json packages/*/
+COPY packages/config/package.json packages/config/
+COPY packages/database/package.json packages/database/
+COPY packages/ai/package.json packages/ai/
 RUN npm ci
 COPY . .
 RUN npm run build -w packages/config -w packages/database -w packages/ai -w apps/api
@@ -20,7 +22,9 @@ COPY apps/api/package.json apps/api/
 COPY apps/admin/package.json apps/admin/
 COPY apps/bot/package.json apps/bot/
 COPY apps/cli/package.json apps/cli/
-COPY packages/*/package.json packages/*/
+COPY packages/config/package.json packages/config/
+COPY packages/database/package.json packages/database/
+COPY packages/ai/package.json packages/ai/
 RUN npm ci --omit=dev
 
 # Production
