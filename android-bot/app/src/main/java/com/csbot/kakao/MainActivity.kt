@@ -159,10 +159,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
-        val view = layoutInflater.inflate(R.layout.activity_main, null)
-        // Simple dialog with EditText fields
-        val dialogView = LayoutInflater.from(this).inflate(android.R.layout.simple_list_item_1, null)
-
         val prefs = App.prefs
         val etApiUrl = TextInputEditText(this).apply {
             setText(prefs.apiUrl)

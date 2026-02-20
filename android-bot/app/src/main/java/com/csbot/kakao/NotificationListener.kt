@@ -3,6 +3,7 @@ package com.csbot.kakao
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import androidx.core.app.NotificationCompat
 import java.util.concurrent.ConcurrentHashMap
 
 class NotificationListener : NotificationListenerService() {
@@ -66,11 +67,11 @@ class NotificationListener : NotificationListenerService() {
     private fun extractInfo(notification: Notification, extras: android.os.Bundle): MessageInfo {
         // Try MessagingStyle (newer KakaoTalk versions)
         try {
-            val style = Notification.MessagingStyle.extractMessagingStyleFromNotification(notification)
+            val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
             if (style != null) {
                 val lastMsg = style.messages.lastOrNull()
                 if (lastMsg != null) {
-                    val sender = lastMsg.senderPerson?.name?.toString()
+                    val sender = lastMsg.person?.name?.toString()
                     val text = lastMsg.text?.toString()
                     val isGroup = style.isGroupConversation
                     val room = if (isGroup) {
