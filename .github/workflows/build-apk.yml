@@ -10,9 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: android-bot
 
     steps:
     - uses: actions/checkout@v4
@@ -40,10 +37,16 @@ jobs:
           "platforms;android-34" \
           "build-tools;34.0.0"
 
+    - name: Create local.properties
+      working-directory: android-bot
+      run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
     - name: Build Debug APK
-      run: gradle assembleDebug --no-daemon --warning-mode all
+      working-directory: android-bot
+      run: gradle assembleDebug --stacktrace --info 2>&1 | tail -200
 
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: CSBot-debug-apk
