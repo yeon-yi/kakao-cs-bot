@@ -124,4 +124,12 @@ export const knowledgeRouter = router({
       await knowledgeRepo.delete(input.id);
       return { success: true, message: '지식이 삭제되었습니다' };
     }),
+
+  bulkDelete: protectedProcedure
+    .input(z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }))
+    .mutation(async ({ input }) => {
+      await knowledgeRepo.bulkDelete(input.ids);
+      logger.info('Knowledge bulk deleted', { count: input.ids.length });
+      return { success: true, count: input.ids.length };
+    }),
 });

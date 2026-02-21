@@ -244,16 +244,8 @@ function getEscalationMessage(): string {
 
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
-// 방별 마지막 응답 시간 (rate limiting, 자동 정리)
-const lastResponseMap = new Map<string, number>();
-const MIN_INTERVAL_MS = 3000;
-const RATE_MAP_CLEANUP_INTERVAL = 600_000; // 10분마다 정리
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, time] of lastResponseMap) {
-    if (now - time > MIN_INTERVAL_MS * 100) lastResponseMap.delete(key);
-  }
-}, RATE_MAP_CLEANUP_INTERVAL);
+// 메시지 배칭: 여러 줄로 나눠 보내는 메시지를 종합 처리
+const MESSAGE_BUFFER_MS = 3000; // 3초 디바운스
 
 export const webhookApp = new Hono();
 
@@ -308,18 +300,45 @@ webhookApp.post('/message', async (c) => {
       return c.json({ answer: null, reason: 'outside_hours' });
     }
 
-    // 2. Rate limiting
-    const lastTime = lastResponseMap.get(roomId) || 0;
-    if (Date.now() - lastTime < MIN_INTERVAL_MS) {
-      return c.json({ answer: null, reason: 'rate_limited' });
+    // 2. 메시지 배칭 (여러 줄 메시지 종합 처리)
+    const redisClient = getRedis();
+    const bufferKey = `msgbuf:${roomId}`;
+    const nonceKey = `msgnonce:${roomId}`;
+
+    await redisClient.rpush(bufferKey, message);
+    await redisClient.expire(bufferKey, 30);
+
+    const myNonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await redisClient.set(nonceKey, myNonce, 'EX', 30);
+
+    // 디바운스 대기
+    await new Promise(resolve => setTimeout(resolve, MESSAGE_BUFFER_MS));
+
+    // 내가 마지막 메시지인지 확인
+    const latestNonce = await redisClient.get(nonceKey);
+    if (latestNonce !== myNonce) {
+      return c.json({ answer: null, reason: 'buffering' });
+    }
+
+    // 버퍼의 모든 메시지 수집
+    const bufferedMessages = await redisClient.lrange(bufferKey, 0, -1);
+    await redisClient.del(bufferKey);
+    await redisClient.del(nonceKey);
+
+    const combinedMessage = bufferedMessages.length > 1
+      ? bufferedMessages.join('\n')
+      : message;
+
+    if (bufferedMessages.length > 1) {
+      logger.info('Messages batched', { roomId, count: bufferedMessages.length });
     }
 
     // 3. 임베딩 + 지식베이스 검색
-    const embedding = await embedder.embed(message);
-    const knowledge = await knowledgeRepo.search(embedding, message, { limit: 5 });
+    const embedding = await embedder.embed(combinedMessage);
+    const knowledge = await knowledgeRepo.search(embedding, combinedMessage, { limit: 5 });
 
     // 3-1. 암시적 피드백 체크 (이전 대화에 대한 반응)
-    await checkImplicitFeedback(roomId, userName || 'unknown', message, embedding);
+    await checkImplicitFeedback(roomId, userName || 'unknown', combinedMessage, embedding);
 
     const topSimilarity = knowledge.length > 0 ? (knowledge[0].similarity ?? 0) : 0;
     const threshold = await getEscalationThreshold();
@@ -341,13 +360,13 @@ webhookApp.post('/message', async (c) => {
       answer = humanizer.humanizeResponse(getEscalationMessage(), { isThankYou: false });
       escalated = true;
 
-      category = await classifyCategory(message);
+      category = await classifyCategory(combinedMessage);
 
       const conversation = await conversationRepo.create({
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
-        user_message: message,
+        user_message: combinedMessage,
         bot_response: answer,
         context: { isGroupChat },
         knowledge_tier: null,
@@ -357,7 +376,7 @@ webhookApp.post('/message', async (c) => {
       });
       conversationId = conversation?.id;
 
-      // 에스컬레이션 담당자 배정
+      // 에스컬레이션 담당자 배정 (톡방별 담당자 우선)
       let assignedStaffId: number | null = null;
       let assignedSource = '';
 
@@ -368,7 +387,7 @@ webhookApp.post('/message', async (c) => {
       }
 
       if (!assignedStaffId) {
-        const categoryAssignee = await escalationRepo.getAssigneeByCategory(category).catch(() => null);
+        const categoryAssignee = await escalationRepo.getAssigneeByCategory(category, roomId).catch(() => null);
         if (categoryAssignee) {
           assignedStaffId = (categoryAssignee as any).staff_id;
           assignedSource = `category:${category}`;
@@ -380,7 +399,7 @@ webhookApp.post('/message', async (c) => {
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
-        user_message: message,
+        user_message: combinedMessage,
         bot_response: answer,
         category,
         confidence: topSimilarity,
@@ -390,7 +409,7 @@ webhookApp.post('/message', async (c) => {
       });
 
       // 불확실 주제 기록
-      await recordUncertainty(message, category || '일반', topSimilarity).catch(() => {});
+      await recordUncertainty(combinedMessage, category || '일반', topSimilarity).catch(() => {});
 
       logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity, threshold, assignedTo: assignedSource || 'none' });
     } else {
@@ -402,7 +421,7 @@ webhookApp.post('/message', async (c) => {
       const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext);
 
       const response = await aiGateway.generate({
-        prompt: message,
+        prompt: combinedMessage,
         systemPrompt,
         temperature: 0.3,
       });
@@ -412,10 +431,10 @@ webhookApp.post('/message', async (c) => {
       usedKnowledgeId = knowledge[0]?.id ?? null;
 
       // 인간화 (톤 분석 포함)
-      const isThankYou = /감사|고마|ㄱㅅ/.test(message);
+      const isThankYou = /감사|고마|ㄱㅅ/.test(combinedMessage);
       answer = humanizer.humanizeResponse(response.text, {
         isThankYou,
-        customerMessage: message,
+        customerMessage: combinedMessage,
         hasHistory: historyContext.length > 0,
       });
 
@@ -427,7 +446,7 @@ webhookApp.post('/message', async (c) => {
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
-        user_message: message,
+        user_message: combinedMessage,
         bot_response: answer,
         context: { isGroupChat },
         knowledge_tier: knowledgeTier,
@@ -439,7 +458,7 @@ webhookApp.post('/message', async (c) => {
 
       // hedging 감지 → 불확실 주제 기록
       if (/정확하지 않을 수|확인이 필요|아마|추후 확인/.test(answer)) {
-        await recordUncertainty(message, knowledge[0]?.category || '일반', topSimilarity, 'hedging').catch(() => {});
+        await recordUncertainty(combinedMessage, knowledge[0]?.category || '일반', topSimilarity, 'hedging').catch(() => {});
       }
 
       logger.info('Response generated', {
@@ -449,10 +468,7 @@ webhookApp.post('/message', async (c) => {
       });
     }
 
-    // 5. Rate limit 업데이트
-    lastResponseMap.set(roomId, Date.now());
-
-    // 6. 암시적 피드백을 위해 현재 대화 정보 Redis에 저장 (TTL 10분)
+    // 5. 암시적 피드백을 위해 현재 대화 정보 Redis에 저장 (TTL 10분)
     if (conversationId && !escalated) {
       try {
         await getRedis().setex(
@@ -467,7 +483,7 @@ webhookApp.post('/message', async (c) => {
       } catch {}
     }
 
-    // 7. 인간다운 딜레이 계산
+    // 6. 인간다운 딜레이 계산
     const delay = humanizer.getResponseDelay();
 
     return c.json({

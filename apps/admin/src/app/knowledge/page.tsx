@@ -20,6 +20,7 @@ const TIER_CONFIG = {
 const KnowledgeItem = memo(function KnowledgeItem({
   item, editId, editForm, setEditForm, setEditId, startEdit, handleUpdate, handleDelete,
   deleteId, setDeleteId, updateMutation, deleteMutation,
+  selected, onToggleSelect,
 }: any) {
   const tier = TIER_CONFIG[item.tier as keyof typeof TIER_CONFIG] || TIER_CONFIG[1];
 
@@ -56,6 +57,10 @@ const KnowledgeItem = memo(function KnowledgeItem({
   return (
     <Card className="group hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start pt-0.5">
+          <input type="checkbox" checked={selected} onChange={() => onToggleSelect(item.id)}
+            className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={tier.variant}>{tier.label}</Badge>
@@ -107,6 +112,7 @@ export default function KnowledgeListPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ question: '', answer: '', category: '', tier: 1 });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const utils = trpc.useUtils();
 
@@ -120,6 +126,10 @@ export default function KnowledgeListPage() {
 
   const deleteMutation = trpc.knowledge.delete.useMutation({
     onSuccess: () => { utils.knowledge.list.invalidate(); setDeleteId(null); },
+  });
+
+  const bulkDeleteMutation = trpc.knowledge.bulkDelete.useMutation({
+    onSuccess: () => { utils.knowledge.list.invalidate(); setSelectedIds(new Set()); },
   });
 
   function startEdit(item: any) {
@@ -136,6 +146,31 @@ export default function KnowledgeListPage() {
     deleteMutation.mutate({ id });
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (!data?.data) return;
+    const allIds = data.data.map(item => item.id);
+    const allSelected = allIds.every(id => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedIds.size}건의 지식을 삭제하시겠습니까?`)) return;
+    bulkDeleteMutation.mutate({ ids: Array.from(selectedIds) });
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -148,7 +183,7 @@ export default function KnowledgeListPage() {
         </Link>
       </div>
 
-      <div className="mb-4 flex gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <Select value={tier ?? ''} onChange={(e) => { setTier(e.currentTarget.value ? Number(e.currentTarget.value) : undefined); setOffset(0); }}
           className="w-40">
           <option value="">전체 Tier</option>
@@ -161,7 +196,35 @@ export default function KnowledgeListPage() {
           <option value="">전체 카테고리</option>
           {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
         </Select>
+        {data?.data && data.data.length > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer select-none">
+              <input type="checkbox"
+                checked={data.data.length > 0 && data.data.every(item => selectedIds.has(item.id))}
+                onChange={toggleSelectAll}
+                className="h-3.5 w-3.5 rounded border-zinc-300 text-blue-600" />
+              전체선택
+            </label>
+          </div>
+        )}
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-red-100 bg-red-50/50 px-4 py-2.5">
+          <span className="text-sm font-medium text-red-700">{selectedIds.size}건 선택됨</span>
+          <Button onClick={handleBulkDelete} variant="destructive" size="sm"
+            disabled={bulkDeleteMutation.isPending}>
+            <Trash2 size={14} />
+            {bulkDeleteMutation.isPending ? '삭제중...' : '일괄 삭제'}
+          </Button>
+          <Button onClick={() => setSelectedIds(new Set())} variant="secondary" size="sm">
+            선택 해제
+          </Button>
+          {bulkDeleteMutation.error && (
+            <span className="text-xs text-red-600">{bulkDeleteMutation.error.message}</span>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
@@ -175,6 +238,7 @@ export default function KnowledgeListPage() {
                 key={item.id} item={item} editId={editId} editForm={editForm} setEditForm={setEditForm}
                 setEditId={setEditId} startEdit={startEdit} handleUpdate={handleUpdate} handleDelete={handleDelete}
                 deleteId={deleteId} setDeleteId={setDeleteId} updateMutation={updateMutation} deleteMutation={deleteMutation}
+                selected={selectedIds.has(item.id)} onToggleSelect={toggleSelect}
               />
             ))}
             {(!data?.data || data.data.length === 0) && (

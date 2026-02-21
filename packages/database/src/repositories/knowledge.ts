@@ -76,6 +76,15 @@ export class KnowledgeRepository {
     await query('UPDATE knowledge_base SET is_active = false WHERE id = $1', [id]);
   }
 
+  async bulkDelete(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    await query(
+      `UPDATE knowledge_base SET is_active = false WHERE id IN (${placeholders})`,
+      ids
+    );
+  }
+
   async incrementUsage(id: string): Promise<void> {
     await query('UPDATE knowledge_base SET usage_count = usage_count + 1 WHERE id = $1', [id]);
   }
