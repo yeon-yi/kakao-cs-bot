@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { createLogger, getEnv } from '@kakao-cs-bot/config';
-import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository } from '@kakao-cs-bot/database';
+import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository, query as dbQuery, queryOne as dbQueryOne } from '@kakao-cs-bot/database';
+import { IdentityRepository } from '@kakao-cs-bot/database';
 import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
 
 const logger = createLogger('api:webhook');
@@ -10,6 +11,45 @@ const conversationRepo = new ConversationRepository();
 const escalationRepo = new EscalationRepository();
 const proactiveRepo = new ProactiveRepository();
 const promptRepo = new PromptRepository();
+const identityRepo = new IdentityRepository();
+
+// 직원 카카오이름 캐시 (5분 TTL)
+let staffNameCache: { names: Map<string, number>; loadedAt: number } | null = null;
+const STAFF_CACHE_TTL = 300_000;
+
+async function getStaffNameMap(): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (staffNameCache && now - staffNameCache.loadedAt < STAFF_CACHE_TTL) {
+    return staffNameCache.names;
+  }
+  const rows = await dbQuery(
+    'SELECT id, kakao_name FROM company_staff WHERE is_active = true AND kakao_name IS NOT NULL',
+    []
+  );
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.kakao_name) map.set(r.kakao_name, r.id);
+  }
+  staffNameCache = { names: map, loadedAt: now };
+  return map;
+}
+
+// 방에 있는 직원 찾기 (room_members 테이블)
+async function findStaffInRoom(roomId: string): Promise<{ staffId: number; staffName: string } | null> {
+  const row = await dbQueryOne(
+    `SELECT rm.user_id, rm.user_name, cs.id as staff_id, cs.real_name, cs.department
+     FROM room_members rm
+     JOIN company_staff cs ON cs.kakao_name = rm.user_name AND cs.is_active = true
+     WHERE rm.room_id = $1 AND rm.role = 'company_staff'
+     ORDER BY rm.updated_at DESC
+     LIMIT 1`,
+    [roomId]
+  );
+  if (row) {
+    return { staffId: row.staff_id, staffName: row.real_name };
+  }
+  return null;
+}
 
 // 프롬프트 캐시 (5분 TTL)
 let cachedPrompt: { template: string; loadedAt: number } | null = null;
@@ -78,7 +118,26 @@ webhookApp.post('/message', async (c) => {
       return c.json({ error: 'roomId and message are required' }, 400);
     }
 
-    // 0. 차단된 방 체크 (해지요청 등)
+    // 0-1. 발신자 직원 여부 자동 감지 → room_members 기록
+    if (userName) {
+      try {
+        const staffMap = await getStaffNameMap();
+        const staffId = staffMap.get(userName);
+        if (staffId) {
+          // 직원이 메시지를 보냄 → room_members에 기록
+          await identityRepo.upsertRoomMember(roomId, userName, userName, 'company_staff', 1.0);
+          // 직원 메시지는 봇이 응답하지 않음
+          return c.json({ answer: null, reason: 'staff_message' });
+        } else {
+          // 일반 사용자(고객) → room_members에 기록
+          await identityRepo.upsertRoomMember(roomId, userName, userName, 'advertiser', 0.5);
+        }
+      } catch (e) {
+        logger.warn('Staff detection failed', { error: String(e) });
+      }
+    }
+
+    // 0-2. 차단된 방 체크 (해지요청 등)
     const isBlocked = await proactiveRepo.isBlocked(roomId).catch(() => false);
     if (isBlocked) {
       return c.json({ answer: null, reason: 'room_blocked' });
@@ -133,8 +192,25 @@ webhookApp.post('/message', async (c) => {
         response_time_ms: Date.now() - startTime,
       });
 
-      // 에스컬레이션 생성
-      const assignee = await escalationRepo.getAssigneeByCategory(category).catch(() => null);
+      // 에스컬레이션 생성: 방 담당자 우선 → 카테고리 담당자 fallback
+      let assignedStaffId: number | null = null;
+      let assignedSource = '';
+
+      // 1순위: 이 방에 참여중인 직원
+      const roomStaff = await findStaffInRoom(roomId).catch(() => null);
+      if (roomStaff) {
+        assignedStaffId = roomStaff.staffId;
+        assignedSource = `room_staff:${roomStaff.staffName}`;
+      }
+
+      // 2순위: 카테고리 담당자
+      if (!assignedStaffId) {
+        const categoryAssignee = await escalationRepo.getAssigneeByCategory(category).catch(() => null);
+        if (categoryAssignee) {
+          assignedStaffId = (categoryAssignee as any).staff_id;
+          assignedSource = `category:${category}`;
+        }
+      }
 
       await escalationRepo.create({
         conversation_id: conversation.id,
@@ -145,12 +221,12 @@ webhookApp.post('/message', async (c) => {
         bot_response: answer,
         category,
         confidence: topSimilarity,
-        status: assignee ? 'assigned' : 'pending',
-        assigned_to: assignee ? (assignee as any).staff_id : null,
-        assigned_at: assignee ? new Date().toISOString() : null,
+        status: assignedStaffId ? 'assigned' : 'pending',
+        assigned_to: assignedStaffId,
+        assigned_at: assignedStaffId ? new Date().toISOString() : null,
       });
 
-      logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity });
+      logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity, assignedTo: assignedSource || 'none' });
     } else {
       // 4b. 정상 응답: 지식 기반 AI 답변
       const knowledgeContext = knowledge
