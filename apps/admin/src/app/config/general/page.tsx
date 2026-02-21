@@ -19,12 +19,13 @@ interface SettingDef {
 const CATEGORY_LABELS: Record<string, string> = {
   api_keys: 'API 키',
   ai: 'AI 설정',
+  ai_chain: 'AI 멀티모델 체인',
   knowledge: '지식 검색',
   response: '응답 설정',
   integrations: '외부 연동',
 };
 
-const CATEGORY_ORDER = ['api_keys', 'ai', 'knowledge', 'response', 'integrations'];
+const CATEGORY_ORDER = ['api_keys', 'ai', 'ai_chain', 'knowledge', 'response', 'integrations'];
 
 export default function SettingsPage() {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
