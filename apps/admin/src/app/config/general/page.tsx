@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Save, X, Check } from 'lucide-react';
+import { Save, X, Check, Power, ShieldAlert } from 'lucide-react';
 
 interface SettingDef {
   key: string;
@@ -17,6 +17,7 @@ interface SettingDef {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
+  bot_control: '봇 제어',
   api_keys: 'API 키',
   ai: 'AI 설정',
   ai_chain: 'AI 멀티모델 체인',
@@ -25,16 +26,36 @@ const CATEGORY_LABELS: Record<string, string> = {
   integrations: '외부 연동',
 };
 
-const CATEGORY_ORDER = ['api_keys', 'ai', 'ai_chain', 'knowledge', 'response', 'integrations'];
+const CATEGORY_ORDER = ['bot_control', 'api_keys', 'ai', 'ai_chain', 'knowledge', 'response', 'integrations'];
 
 export default function SettingsPage() {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
+  const [toggling, setToggling] = useState(false);
+
   const { data: definitions } = trpc.settings.definitions.useQuery();
   const { data: values, refetch: refetchValues } = trpc.settings.getAll.useQuery();
   const setMutation = trpc.settings.set.useMutation();
+
+  const botEnabled = values?.['bot.enabled']?.value === 'true';
+
+  async function handleBotToggle() {
+    const newVal = botEnabled ? 'false' : 'true';
+    if (newVal === 'true') {
+      if (!confirm('봇을 활성화하시겠습니까?\n\n활성화하면 운영시간 내 모든 고객 메시지에 자동 응답합니다.\n학습이 충분히 완료되었는지 확인하세요.')) return;
+    }
+    setToggling(true);
+    try {
+      await setMutation.mutateAsync({ key: 'bot.enabled', value: newVal });
+      await refetchValues();
+    } catch (err: any) {
+      alert('변경 실패: ' + err.message);
+    } finally {
+      setToggling(false);
+    }
+  }
 
   function groupByCategory(defs: SettingDef[]) {
     const groups: Record<string, SettingDef[]> = {};
@@ -91,10 +112,42 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* 봇 ON/OFF 토글 (최상단) */}
+      <Card className={`p-5 mb-8 border-2 ${botEnabled ? 'border-emerald-300 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {botEnabled
+              ? <Power size={24} className="text-emerald-600" />
+              : <ShieldAlert size={24} className="text-red-500" />
+            }
+            <div>
+              <p className="text-base font-semibold text-zinc-900">
+                {botEnabled ? '봇 활성화됨' : '봇 비활성화됨'}
+              </p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {botEnabled
+                  ? '운영시간(09:50~18:30) 내 고객 메시지에 자동 응답합니다'
+                  : '모든 메시지를 무시합니다. 학습 완료 후 켜세요'}
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleBotToggle}
+            disabled={toggling}
+            variant={botEnabled ? 'destructive' : 'success'}
+            className="px-6 py-2 text-sm font-semibold"
+          >
+            {toggling ? '...' : botEnabled ? 'OFF' : 'ON'}
+          </Button>
+        </div>
+      </Card>
+
       <div className="space-y-8">
         {CATEGORY_ORDER.map(cat => {
           const items = groups[cat];
           if (!items?.length) return null;
+          // bot_control은 위에서 토글로 처리했으므로 스킵
+          if (cat === 'bot_control') return null;
 
           return (
             <section key={cat}>

@@ -297,7 +297,14 @@ webhookApp.post('/message', async (c) => {
       return c.json({ answer: null, reason: 'room_blocked' });
     }
 
-    // 0-3. 사진/미디어 메시지 처리
+    // 0-3. 봇 활성화 체크 (OFF면 모든 메시지 무시)
+    const botEnabled = await configRepo.get('bot.enabled').catch(() => null);
+    const isEnabled = botEnabled?.value === '"true"' || botEnabled?.value === 'true';
+    if (!isEnabled) {
+      return c.json({ answer: null, reason: 'bot_disabled' });
+    }
+
+    // 0-4. 사진/미디어 메시지 처리
     if (effectiveMessageType !== 'text') {
       return await handleNonTextMessage(c, {
         roomId, userName: userName || 'unknown', message,
