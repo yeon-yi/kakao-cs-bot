@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Save, X, Check, Power, ShieldAlert } from 'lucide-react';
+import { Save, X, Check, Power, ShieldAlert, FlaskConical } from 'lucide-react';
 
 interface SettingDef {
   key: string;
@@ -39,16 +39,16 @@ export default function SettingsPage() {
   const { data: values, refetch: refetchValues } = trpc.settings.getAll.useQuery();
   const setMutation = trpc.settings.set.useMutation();
 
-  const botEnabled = values?.['bot.enabled']?.value === 'true';
+  const botMode = (values?.['bot.mode']?.value || 'off').replace(/"/g, '').trim();
+  const testRooms = (values?.['bot.test_rooms']?.value || '').replace(/"/g, '').trim();
 
-  async function handleBotToggle() {
-    const newVal = botEnabled ? 'false' : 'true';
-    if (newVal === 'true') {
-      if (!confirm('봇을 활성화하시겠습니까?\n\n활성화하면 운영시간 내 모든 고객 메시지에 자동 응답합니다.\n학습이 충분히 완료되었는지 확인하세요.')) return;
+  async function handleModeChange(newMode: string) {
+    if (newMode === 'on') {
+      if (!confirm('봇을 전체 활성화하시겠습니까?\n\n운영시간 내 모든 고객 메시지에 자동 응답합니다.\n학습과 테스트가 충분히 완료되었는지 확인하세요.')) return;
     }
     setToggling(true);
     try {
-      await setMutation.mutateAsync({ key: 'bot.enabled', value: newVal });
+      await setMutation.mutateAsync({ key: 'bot.mode', value: newMode });
       await refetchValues();
     } catch (err: any) {
       alert('변경 실패: ' + err.message);
@@ -112,34 +112,78 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* 봇 ON/OFF 토글 (최상단) */}
-      <Card className={`p-5 mb-8 border-2 ${botEnabled ? 'border-emerald-300 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'}`}>
-        <div className="flex items-center justify-between">
+      {/* 봇 모드 제어 (최상단) */}
+      <Card className={`p-5 mb-8 border-2 ${
+        botMode === 'on' ? 'border-emerald-300 bg-emerald-50/30'
+          : botMode === 'test' ? 'border-amber-300 bg-amber-50/30'
+          : 'border-red-200 bg-red-50/30'
+      }`}>
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            {botEnabled
-              ? <Power size={24} className="text-emerald-600" />
-              : <ShieldAlert size={24} className="text-red-500" />
-            }
+            {botMode === 'on' && <Power size={24} className="text-emerald-600" />}
+            {botMode === 'test' && <FlaskConical size={24} className="text-amber-600" />}
+            {botMode === 'off' && <ShieldAlert size={24} className="text-red-500" />}
             <div>
               <p className="text-base font-semibold text-zinc-900">
-                {botEnabled ? '봇 활성화됨' : '봇 비활성화됨'}
+                {botMode === 'on' ? '운영중' : botMode === 'test' ? '테스트 모드' : '봇 꺼짐'}
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">
-                {botEnabled
-                  ? '운영시간(09:50~18:30) 내 고객 메시지에 자동 응답합니다'
-                  : '모든 메시지를 무시합니다. 학습 완료 후 켜세요'}
+                {botMode === 'on' && '운영시간 내 모든 고객 메시지에 자동 응답합니다'}
+                {botMode === 'test' && '지정된 테스트 방에서만 봇이 응답합니다'}
+                {botMode === 'off' && '모든 메시지를 무시합니다'}
               </p>
             </div>
           </div>
-          <Button
-            onClick={handleBotToggle}
-            disabled={toggling}
-            variant={botEnabled ? 'destructive' : 'success'}
-            className="px-6 py-2 text-sm font-semibold"
-          >
-            {toggling ? '...' : botEnabled ? 'OFF' : 'ON'}
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => handleModeChange('off')} disabled={toggling || botMode === 'off'}
+            variant={botMode === 'off' ? 'default' : 'secondary'} size="sm"
+            className={botMode === 'off' ? 'ring-2 ring-red-300' : ''}>
+            <ShieldAlert size={14} /> OFF
+          </Button>
+          <Button onClick={() => handleModeChange('test')} disabled={toggling || botMode === 'test'}
+            variant={botMode === 'test' ? 'default' : 'secondary'} size="sm"
+            className={botMode === 'test' ? 'ring-2 ring-amber-300 bg-amber-500 hover:bg-amber-600 text-white' : ''}>
+            <FlaskConical size={14} /> 테스트
+          </Button>
+          <Button onClick={() => handleModeChange('on')} disabled={toggling || botMode === 'on'}
+            variant={botMode === 'on' ? 'default' : 'secondary'} size="sm"
+            className={botMode === 'on' ? 'ring-2 ring-emerald-300 bg-emerald-500 hover:bg-emerald-600 text-white' : ''}>
+            <Power size={14} /> 운영
           </Button>
         </div>
+        {botMode === 'test' && (
+          <div className="mt-4 pt-3 border-t border-amber-200/50">
+            <p className="text-xs font-medium text-amber-700 mb-2">테스트 방 목록</p>
+            <p className="text-[11px] text-amber-600/70 mb-2">아래 방에서만 봇이 응답합니다. 쉼표로 구분하세요.</p>
+            <div className="flex gap-2 items-center">
+              <Input
+                value={editValues['bot.test_rooms'] ?? testRooms}
+                onChange={(e) => setEditValues(prev => ({ ...prev, 'bot.test_rooms': e.currentTarget.value }))}
+                placeholder="방이름1, 방이름2, ..."
+                className="flex-1 text-xs font-mono"
+              />
+              {editValues['bot.test_rooms'] !== undefined && (
+                <>
+                  <Button onClick={() => handleSave('bot.test_rooms')} disabled={saving === 'bot.test_rooms'} size="sm">
+                    <Save size={14} /> 저장
+                  </Button>
+                  <Button onClick={() => setEditValues(prev => { const next = { ...prev }; delete next['bot.test_rooms']; return next; })}
+                    variant="secondary" size="sm">
+                    <X size={14} />
+                  </Button>
+                </>
+              )}
+            </div>
+            {testRooms && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {testRooms.split(',').map((r: string) => r.trim()).filter(Boolean).map((room: string) => (
+                  <Badge key={room} variant="outline" className="text-[10px] font-mono">{room}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       <div className="space-y-8">

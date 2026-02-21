@@ -14,8 +14,9 @@ function maskKey(value: string): string {
 
 // 설정 가능한 키 정의 (확장 가능)
 const SETTING_DEFINITIONS = [
-  // 봇 활성화
-  { key: 'bot.enabled', label: '봇 활성화', category: 'bot_control', sensitive: false, description: 'ON = 운영시간 내 자동 응답, OFF = 모든 메시지 무시 (학습 완료 후 켜세요)' },
+  // 봇 제어
+  { key: 'bot.mode', label: '봇 모드', category: 'bot_control', sensitive: false, description: 'off / test / on (기본: off)' },
+  { key: 'bot.test_rooms', label: '테스트 방 목록', category: 'bot_control', sensitive: false, description: '테스트 모드에서 봇이 응답할 방 ID (쉼표 구분)' },
   // AI API Keys
   { key: 'api.openai_key', label: 'OpenAI API Key', category: 'api_keys', sensitive: true, description: 'GPT-4o / GPT-4o mini / Embeddings' },
   { key: 'api.gemini_key', label: 'Gemini API Key', category: 'api_keys', sensitive: true, description: 'Google Gemini Flash (백업)' },

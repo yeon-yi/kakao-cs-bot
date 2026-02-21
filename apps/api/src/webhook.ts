@@ -297,12 +297,26 @@ webhookApp.post('/message', async (c) => {
       return c.json({ answer: null, reason: 'room_blocked' });
     }
 
-    // 0-3. 봇 활성화 체크 (OFF면 모든 메시지 무시)
-    const botEnabled = await configRepo.get('bot.enabled').catch(() => null);
-    const isEnabled = botEnabled?.value === '"true"' || botEnabled?.value === 'true';
-    if (!isEnabled) {
+    // 0-3. 봇 모드 체크 (off / test / on)
+    const botModeConfig = await configRepo.get('bot.mode').catch(() => null);
+    const botMode = (botModeConfig?.value || 'off').replace(/"/g, '').trim();
+
+    if (botMode === 'off') {
       return c.json({ answer: null, reason: 'bot_disabled' });
     }
+
+    if (botMode === 'test') {
+      // 테스트 모드: 등록된 방에서만 응답
+      const testRoomsConfig = await configRepo.get('bot.test_rooms').catch(() => null);
+      const testRoomsStr = (testRoomsConfig?.value || '').replace(/"/g, '').trim();
+      const testRooms = testRoomsStr ? testRoomsStr.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
+
+      if (testRooms.length === 0 || !testRooms.includes(roomId)) {
+        return c.json({ answer: null, reason: 'test_mode_excluded' });
+      }
+      // 테스트 방이면 통과 → 정상 응답
+    }
+    // botMode === 'on' → 전체 통과
 
     // 0-4. 사진/미디어 메시지 처리
     if (effectiveMessageType !== 'text') {
