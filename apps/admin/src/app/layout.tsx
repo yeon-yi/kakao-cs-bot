@@ -1,16 +1,7 @@
-'use client';
-
 import './globals.css';
-import { useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { trpc, getTrpcClient } from '@/lib/trpc';
+import { Providers } from './providers';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { staleTime: 5000 } },
-  }));
-  const [trpcClient] = useState(() => getTrpcClient());
-
   return (
     <html lang="ko">
       <head>
@@ -18,11 +9,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <title>CS Bot Admin</title>
       </head>
       <body>
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            {children}
-          </QueryClientProvider>
-        </trpc.Provider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

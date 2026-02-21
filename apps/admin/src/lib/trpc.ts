@@ -6,7 +6,6 @@ import type { AppRouter } from '@kakao-cs-bot/api/src/routers';
 export const trpc: ReturnType<typeof createTRPCReact<AppRouter>> = createTRPCReact<AppRouter>();
 
 export function getBaseUrl() {
-  if (typeof window !== 'undefined') return '';
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 }
 

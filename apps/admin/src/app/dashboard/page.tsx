@@ -5,6 +5,7 @@ import { Card, CardTitle, CardValue } from '@/components/ui/card';
 import {
   Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target,
   MessageSquare, Users, BookOpen, Zap, BarChart3, MessagesSquare,
+  Brain, CheckCircle2, TrendingDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,9 @@ const iconMap = {
   speed: Zap,
   chart: BarChart3,
   rooms: MessagesSquare,
+  brain: Brain,
+  check: CheckCircle2,
+  trending: TrendingDown,
 };
 
 interface StatCardProps {
@@ -69,6 +73,12 @@ export default function DashboardPage() {
   const { data: summary, isLoading } = trpc.analytics.summary.useQuery();
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
   const { data: today } = trpc.analytics.today.useQuery(undefined, {
+    refetchInterval: 60_000,
+  });
+  const { data: learning } = trpc.analytics.learningRate.useQuery(undefined, {
+    refetchInterval: 300_000,
+  });
+  const { data: uncertaintyCount } = trpc.uncertainty.openCount.useQuery(undefined, {
     refetchInterval: 60_000,
   });
 
@@ -144,6 +154,48 @@ export default function DashboardPage() {
           value={`$${(summary?.totalCost ?? 0).toFixed(2)}`}
           icon="cost"
           color="pink"
+        />
+      </div>
+
+      {/* AI 학습 현황 */}
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-zinc-800">AI 학습 현황</h2>
+        <p className="text-xs text-zinc-400">이번 주 학습 진행 상태</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+        <StatCard
+          title="금주 신규 지식"
+          value={learning?.newKnowledgeThisWeek ?? 0}
+          unit="건"
+          icon="brain"
+          color="violet"
+          sub={`학습 완료 ${learning?.learnedThisWeek ?? 0}건`}
+        />
+        <StatCard
+          title="에스컬레이션 추이"
+          value={learning?.escalationsThisWeek ?? 0}
+          unit="건"
+          icon="trending"
+          color={(learning?.escalationsTrend ?? 0) <= 0 ? 'green' : 'red'}
+          sub={`전주 대비 ${(learning?.escalationsTrend ?? 0) > 0 ? '+' : ''}${learning?.escalationsTrend ?? 0}건`}
+        />
+        <StatCard
+          title="불확실 주제"
+          value={uncertaintyCount?.count ?? 0}
+          unit="건"
+          icon="escalation"
+          color="amber"
+          alert={(uncertaintyCount?.count ?? 0) > 10}
+        />
+        <StatCard
+          title="지식 검증율"
+          value={learning?.verification?.total
+            ? `${Math.round((learning.verification.verified / learning.verification.total) * 100)}%`
+            : '0%'}
+          icon="check"
+          color="green"
+          sub={`${learning?.verification?.verified ?? 0}/${learning?.verification?.total ?? 0} 검증됨`}
         />
       </div>
 

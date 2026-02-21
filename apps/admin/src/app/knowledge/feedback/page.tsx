@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea, Select } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, MessageSquare, X } from 'lucide-react';
+import { AlertCircle, MessageSquare, X, CheckCircle2, XCircle, Brain } from 'lucide-react';
 
 const STATUS_TABS = [
   { value: undefined, label: '전체' },
@@ -33,6 +33,7 @@ export default function EscalationPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [answerText, setAnswerText] = useState('');
   const [answerCategory, setAnswerCategory] = useState('');
+  const [verificationResult, setVerificationResult] = useState<{ knowledgeId: string; interpretation: string } | null>(null);
   const limit = 20;
 
   const utils = trpc.useUtils();
@@ -40,12 +41,23 @@ export default function EscalationPage() {
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
 
   const answerMutation = trpc.escalation.answer.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
       utils.escalation.list.invalidate();
       utils.escalation.pendingCount.invalidate();
       setSelectedId(null);
       setAnswerText('');
       setAnswerCategory('');
+      // AI 검증 결과 표시
+      if (result.aiInterpretation && result.knowledgeId) {
+        setVerificationResult({ knowledgeId: result.knowledgeId, interpretation: result.aiInterpretation });
+      }
+    },
+  });
+
+  const verifyMutation = trpc.escalation.verify.useMutation({
+    onSuccess: () => {
+      setVerificationResult(null);
+      utils.escalation.list.invalidate();
     },
   });
 
@@ -71,9 +83,37 @@ export default function EscalationPage() {
           )}
         </div>
         <p className="mt-1 text-sm text-zinc-500">
-          봇이 답변하지 못한 질문을 확인합니다. 답변을 등록하면 지식 DB에 자동 학습됩니다.
+          봇이 답변하지 못한 질문을 확인합니다. 답변 등록 시 자동 학습 + 질문 변형 생성 + AI 이해도 검증이 진행됩니다.
         </p>
       </div>
+
+      {/* AI 검증 모달 */}
+      {verificationResult && (
+        <Card className="mb-5 p-4 border-blue-200 bg-blue-50/50">
+          <div className="flex items-start gap-3">
+            <Brain size={20} className="text-blue-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-800 mb-2">AI 이해도 검증</p>
+              <p className="text-sm text-blue-700 whitespace-pre-wrap">{verificationResult.interpretation}</p>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" variant="success"
+                  onClick={() => verifyMutation.mutate({ knowledgeId: verificationResult.knowledgeId, status: 'verified' })}
+                  disabled={verifyMutation.isPending}>
+                  <CheckCircle2 size={14} /> 정확함
+                </Button>
+                <Button size="sm" variant="destructive"
+                  onClick={() => verifyMutation.mutate({ knowledgeId: verificationResult.knowledgeId, status: 'needs_correction' })}
+                  disabled={verifyMutation.isPending}>
+                  <XCircle size={14} /> 수정 필요
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setVerificationResult(null)}>
+                  나중에
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* 상태 탭 */}
       <div className="flex gap-1 mb-5 border-b border-zinc-200">
@@ -101,7 +141,7 @@ export default function EscalationPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {data.data.map((item) => {
+          {data.data.map((item: any) => {
             const badge = STATUS_BADGE[item.status] || STATUS_BADGE.pending;
             return (
               <Card key={item.id} className="p-4">
@@ -148,10 +188,10 @@ export default function EscalationPage() {
 
                 {selectedId === item.id && (
                   <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3">
-                    <Textarea value={answerText} onChange={(e) => setAnswerText(e.currentTarget.value)}
+                    <Textarea value={answerText} onChange={(e: any) => setAnswerText(e.currentTarget.value)}
                       placeholder="이 질문에 대한 올바른 답변을 입력하세요..." rows={3} autoFocus />
                     <div className="flex gap-2 items-center">
-                      <Select value={answerCategory} onChange={(e) => setAnswerCategory(e.currentTarget.value)} className="w-40">
+                      <Select value={answerCategory} onChange={(e: any) => setAnswerCategory(e.currentTarget.value)} className="w-40">
                         {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </Select>
                       <Button onClick={() => handleAnswer(item.id)}

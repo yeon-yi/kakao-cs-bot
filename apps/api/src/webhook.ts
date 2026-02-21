@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { createLogger, getEnv } from '@kakao-cs-bot/config';
-import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository, query as dbQuery, queryOne as dbQueryOne } from '@kakao-cs-bot/database';
+import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository, ConfigRepository, query as dbQuery, queryOne as dbQueryOne } from '@kakao-cs-bot/database';
 import { IdentityRepository } from '@kakao-cs-bot/database';
 import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
+import Redis from 'ioredis';
 
 const logger = createLogger('api:webhook');
 
@@ -12,6 +13,14 @@ const escalationRepo = new EscalationRepository();
 const proactiveRepo = new ProactiveRepository();
 const promptRepo = new PromptRepository();
 const identityRepo = new IdentityRepository();
+const configRepo = new ConfigRepository();
+
+// Redis for implicit feedback tracking
+let redis: Redis | null = null;
+function getRedis(): Redis {
+  if (!redis) redis = new Redis(getEnv().REDIS_URL);
+  return redis;
+}
 
 // 직원 카카오이름 캐시 (5분 TTL)
 let staffNameCache: { names: Map<string, number>; loadedAt: number } | null = null;
@@ -51,11 +60,30 @@ async function findStaffInRoom(roomId: string): Promise<{ staffId: number; staff
   return null;
 }
 
-// 프롬프트 캐시 (5분 TTL)
+// ===================== 에스컬레이션 임계값 (DB 연동, 5분 캐시) =====================
+let cachedThreshold: { value: number; loadedAt: number } | null = null;
+const THRESHOLD_CACHE_TTL = 300_000;
+
+async function getEscalationThreshold(): Promise<number> {
+  const now = Date.now();
+  if (cachedThreshold && now - cachedThreshold.loadedAt < THRESHOLD_CACHE_TTL) {
+    return cachedThreshold.value;
+  }
+  try {
+    const config = await configRepo.get('response.escalation_threshold');
+    const val = parseFloat(config?.value ?? '0.5');
+    cachedThreshold = { value: isNaN(val) ? 0.5 : val, loadedAt: now };
+  } catch {
+    cachedThreshold = { value: 0.5, loadedAt: now };
+  }
+  return cachedThreshold.value;
+}
+
+// ===================== 프롬프트 (대화 히스토리 지원) =====================
 let cachedPrompt: { template: string; loadedAt: number } | null = null;
 const PROMPT_CACHE_TTL = 300000;
 
-async function getSystemPrompt(knowledgeContext: string): Promise<string> {
+async function getSystemPrompt(knowledgeContext: string, historyContext: string): Promise<string> {
   const now = Date.now();
   if (!cachedPrompt || now - cachedPrompt.loadedAt > PROMPT_CACHE_TTL) {
     const row = await promptRepo.get('default_answer').catch(() => null);
@@ -65,32 +93,149 @@ async function getSystemPrompt(knowledgeContext: string): Promise<string> {
   }
 
   if (cachedPrompt?.template) {
-    return cachedPrompt.template.replace('{{context}}', knowledgeContext);
+    return cachedPrompt.template
+      .replace('{{context}}', knowledgeContext)
+      .replace('{{history}}', historyContext);
   }
 
-  // DB에서 로드 실패 시 기본 프롬프트
-  return `당신은 온라인 마케팅/광고 대행사의 CS 담당자입니다.
-고객(광고주)의 질문에 친절하고 전문적으로 답변합니다.
+  // DB에서 로드 실패 시 기본 프롬프트 (강화된 버전)
+  return `당신은 온라인 마케팅/광고 대행사 CS팀의 숙련된 직원입니다.
+카카오톡으로 고객(광고주)과 대화합니다.
+
+대화 스타일:
+- "~합니다", "~드리겠습니다", "~알겠습니다" 등 프로페셔널한 존댓말 사용
+- 대기업 CS 담당자처럼 신뢰감 있고 정중하게
+- 2~4문장 이내로 간결하고 핵심적으로 답변
+- 고객이 불만이면 먼저 사과: "불편을 드려 죄송합니다"
+- 이전 대화 내용을 자연스럽게 이어가기
+- 확신 있는 정보만 전달, 불확실하면 "확인 후 안내드리겠습니다"
+
+절대 하지 않을 것:
+- AI라는 것을 직간접적으로 드러내기
+- "~요" 체 사용 (예: 알려드릴게요 X → 알려드리겠습니다 O)
+- 매번 같은 패턴의 인사나 마무리
+- "도움이 필요하시면 말씀해주세요" 같은 로봇적 마무리를 매번 붙이기
+- 이모지 남발 (최소한으로만 사용)
+- 초보자 느낌이 나는 불확실한 답변
+
+최근 대화:
+${historyContext || '(첫 대화)'}
 
 참고 지식:
-${knowledgeContext}
-
-규칙:
-- 참고 지식을 바탕으로 정확하게 답변하세요
-- 모르는 것은 확인 후 안내하겠다고 하세요
-- 존댓말을 사용하세요
-- 2~3문장 이내로 간결하게 답변하세요
-- AI임을 밝히지 마세요`;
+${knowledgeContext}`;
 }
 
-const ESCALATION_THRESHOLD = 0.5;
+// ===================== 대화 히스토리 포맷팅 =====================
+async function getConversationHistory(roomId: string, userName: string): Promise<string> {
+  try {
+    const history = await conversationRepo.getHistory(roomId, userName, 5);
+    if (!history || history.length === 0) return '';
+
+    // 최신→오래된 순으로 반환되므로 reverse
+    return history.reverse().map((h: any) => {
+      const parts: string[] = [];
+      if (h.user_message) parts.push(`[고객] ${h.user_message}`);
+      if (h.bot_response) parts.push(`[나] ${h.bot_response}`);
+      return parts.join('\n');
+    }).join('\n\n');
+  } catch {
+    return '';
+  }
+}
+
+// ===================== 암시적 피드백 감지 =====================
+// 비꼬기/냉소 패턴 (감사+불만 동시)
+const SARCASM_PATTERNS = /고맙네|감사하네|덕분에.*떨어|덕분에.*줄|잘\s*하시네|대단하시|:\)/i;
+const COMPLAINT_WITH_THANKS = /떨어|줄었|손해|피해|매출|지켜볼|두고\s*보|가만/i;
+
+const PURE_POSITIVE_PATTERNS = /감사합니다|고맙습니다|ㄱㅅ|알겠습니다|넵|네\s*알겠|오[키케]|ㅇㅋ|좋아요|완벽|최고/i;
+const NEGATIVE_PATTERNS = /아니[요요]?(?:\s|$)|다시\s*(?:한번|알려|설명)|제대로|뭔소리|이해가\s*안|틀렸|잘못|엉뚱한/i;
+
+async function checkImplicitFeedback(roomId: string, userName: string, currentMessage: string, currentEmbedding: number[]): Promise<void> {
+  try {
+    const redisClient = getRedis();
+    const prevKey = `lastconv:${roomId}:${userName}`;
+    const prevData = await redisClient.get(prevKey);
+
+    if (!prevData) return;
+
+    const prev = JSON.parse(prevData);
+    const prevConvId = prev.conversationId;
+    const prevKnowledgeId = prev.knowledgeId;
+
+    // 비꼬기 감지: 감사 표현 + 불만 키워드 동시 존재 → 부정적
+    const isSarcastic = SARCASM_PATTERNS.test(currentMessage)
+      || (/(감사|고맙)/.test(currentMessage) && COMPLAINT_WITH_THANKS.test(currentMessage));
+
+    if (isSarcastic) {
+      await conversationRepo.markHelpful(prevConvId, false);
+      if (prevKnowledgeId) {
+        await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.1).catch(() => {});
+      }
+      logger.debug('Sarcastic negative feedback detected', { roomId, convId: prevConvId });
+    } else if (PURE_POSITIVE_PATTERNS.test(currentMessage) && !COMPLAINT_WITH_THANKS.test(currentMessage)) {
+      await conversationRepo.markHelpful(prevConvId, true);
+      if (prevKnowledgeId) {
+        await knowledgeRepo.adjustConfidence(prevKnowledgeId, 0.05).catch(() => {});
+      }
+      logger.debug('Implicit positive feedback', { roomId, convId: prevConvId });
+    } else if (NEGATIVE_PATTERNS.test(currentMessage)) {
+      await conversationRepo.markHelpful(prevConvId, false);
+      if (prevKnowledgeId) {
+        await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.1).catch(() => {});
+      }
+      logger.debug('Implicit negative feedback', { roomId, convId: prevConvId });
+    }
+
+    // 같은 질문 반복 감지 (similarity > 0.85)
+    if (prev.embedding && currentEmbedding) {
+      const similarity = cosineSimilarity(currentEmbedding, prev.embedding);
+      if (similarity > 0.85) {
+        await conversationRepo.markHelpful(prevConvId, false);
+        if (prevKnowledgeId) {
+          await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.15).catch(() => {});
+        }
+        logger.debug('Repeated question detected', { roomId, similarity });
+      }
+    }
+
+    // 처리 후 삭제
+    await redisClient.del(prevKey);
+  } catch (e) {
+    logger.warn('Implicit feedback check failed', { error: String(e) });
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
+}
+
+// ===================== 에스컬레이션 메시지 다양화 =====================
+const ESCALATION_TEMPLATES = [
+  '확인해보고 바로 안내드릴게요! 잠시만 기다려주세요~',
+  '아 그 부분은 제가 좀 더 확인해볼게요. 금방 답변드리겠습니다!',
+  '잠깐만요, 정확한 내용 확인해서 바로 안내드릴게요!',
+  '네 해당 부분 확인 후 안내드리겠습니다. 조금만 기다려주세요!',
+  '좋은 질문이세요! 정확하게 확인해서 말씀드릴게요~',
+  '아 그 부분이시군요. 확인해보고 바로 알려드리겠습니다!',
+];
+
+function getEscalationMessage(): string {
+  return ESCALATION_TEMPLATES[Math.floor(Math.random() * ESCALATION_TEMPLATES.length)];
+}
+
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
-
-
 
 // 방별 마지막 응답 시간 (rate limiting)
 const lastResponseMap = new Map<string, number>();
-const MIN_INTERVAL_MS = 3000; // 같은 방에 최소 3초 간격
+const MIN_INTERVAL_MS = 3000;
 
 export const webhookApp = new Hono();
 
@@ -124,12 +269,9 @@ webhookApp.post('/message', async (c) => {
         const staffMap = await getStaffNameMap();
         const staffId = staffMap.get(userName);
         if (staffId) {
-          // 직원이 메시지를 보냄 → room_members에 기록
           await identityRepo.upsertRoomMember(roomId, userName, userName, 'company_staff', 1.0);
-          // 직원 메시지는 봇이 응답하지 않음
           return c.json({ answer: null, reason: 'staff_message' });
         } else {
-          // 일반 사용자(고객) → room_members에 기록
           await identityRepo.upsertRoomMember(roomId, userName, userName, 'advertiser', 0.5);
         }
       } catch (e) {
@@ -137,7 +279,7 @@ webhookApp.post('/message', async (c) => {
       }
     }
 
-    // 0-2. 차단된 방 체크 (해지요청 등)
+    // 0-2. 차단된 방 체크
     const isBlocked = await proactiveRepo.isBlocked(roomId).catch(() => false);
     if (isBlocked) {
       return c.json({ answer: null, reason: 'room_blocked' });
@@ -148,37 +290,41 @@ webhookApp.post('/message', async (c) => {
       return c.json({ answer: null, reason: 'outside_hours' });
     }
 
-    // 2. Rate limiting (같은 방 연속 응답 방지)
+    // 2. Rate limiting
     const lastTime = lastResponseMap.get(roomId) || 0;
     if (Date.now() - lastTime < MIN_INTERVAL_MS) {
       return c.json({ answer: null, reason: 'rate_limited' });
     }
 
-    // 3. 지식베이스 검색
+    // 3. 임베딩 + 지식베이스 검색
     const embedding = await embedder.embed(message);
     const knowledge = await knowledgeRepo.search(embedding, message, { limit: 5 });
 
+    // 3-1. 암시적 피드백 체크 (이전 대화에 대한 반응)
+    await checkImplicitFeedback(roomId, userName || 'unknown', message, embedding);
+
     const topSimilarity = knowledge.length > 0 ? (knowledge[0].similarity ?? 0) : 0;
-    const needsEscalation = knowledge.length === 0 || topSimilarity < ESCALATION_THRESHOLD;
+    const threshold = await getEscalationThreshold();
+    const needsEscalation = knowledge.length === 0 || topSimilarity < threshold;
 
     let answer: string;
     let escalated = false;
     let category: string | null = null;
     let aiModel: string | null = null;
     let knowledgeTier: number | null = null;
+    let conversationId: number | null = null;
+    let usedKnowledgeId: string | null = null;
+
+    // 대화 히스토리 가져오기
+    const historyContext = await getConversationHistory(roomId, userName || 'unknown');
 
     if (needsEscalation) {
-      // 4a. 에스컬레이션: 봇이 답변 못하는 질문
-      answer = humanizer.humanizeResponse(
-        '확인 후 담당자가 안내드리겠습니다. 잠시만 기다려 주세요!',
-        { isThankYou: false },
-      );
+      // 4a. 에스컬레이션
+      answer = humanizer.humanizeResponse(getEscalationMessage(), { isThankYou: false });
       escalated = true;
 
-      // AI 카테고리 분류
       category = await classifyCategory(message);
 
-      // 대화 저장
       const conversation = await conversationRepo.create({
         room_id: roomId,
         user_id: userName || 'unknown',
@@ -191,19 +337,18 @@ webhookApp.post('/message', async (c) => {
         confidence: topSimilarity,
         response_time_ms: Date.now() - startTime,
       });
+      conversationId = conversation?.id;
 
-      // 에스컬레이션 생성: 방 담당자 우선 → 카테고리 담당자 fallback
+      // 에스컬레이션 담당자 배정
       let assignedStaffId: number | null = null;
       let assignedSource = '';
 
-      // 1순위: 이 방에 참여중인 직원
       const roomStaff = await findStaffInRoom(roomId).catch(() => null);
       if (roomStaff) {
         assignedStaffId = roomStaff.staffId;
         assignedSource = `room_staff:${roomStaff.staffName}`;
       }
 
-      // 2순위: 카테고리 담당자
       if (!assignedStaffId) {
         const categoryAssignee = await escalationRepo.getAssigneeByCategory(category).catch(() => null);
         if (categoryAssignee) {
@@ -213,7 +358,7 @@ webhookApp.post('/message', async (c) => {
       }
 
       await escalationRepo.create({
-        conversation_id: conversation.id,
+        conversation_id: conversation?.id,
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
@@ -226,35 +371,41 @@ webhookApp.post('/message', async (c) => {
         assigned_at: assignedStaffId ? new Date().toISOString() : null,
       });
 
-      logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity, assignedTo: assignedSource || 'none' });
+      // 불확실 주제 기록
+      await recordUncertainty(message, category || '일반', topSimilarity).catch(() => {});
+
+      logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity, threshold, assignedTo: assignedSource || 'none' });
     } else {
-      // 4b. 정상 응답: 지식 기반 AI 답변
+      // 4b. 정상 응답
       const knowledgeContext = knowledge
         .map(k => `Q: ${k.question}\nA: ${k.answer}`)
         .join('\n\n');
 
-      const systemPrompt = await getSystemPrompt(knowledgeContext);
+      const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext);
 
       const response = await aiGateway.generate({
         prompt: message,
         systemPrompt,
-        temperature: 0.2,
+        temperature: 0.3,
       });
 
       aiModel = response.model;
       knowledgeTier = knowledge[0]?.tier ?? null;
+      usedKnowledgeId = knowledge[0]?.id ?? null;
 
-      // 인간화
+      // 인간화 (톤 분석 포함)
       const isThankYou = /감사|고마|ㄱㅅ/.test(message);
-      answer = humanizer.humanizeResponse(response.text, { isThankYou });
+      answer = humanizer.humanizeResponse(response.text, {
+        isThankYou,
+        customerMessage: message,
+        hasHistory: historyContext.length > 0,
+      });
 
-      // 지식 사용 카운트 증가
       if (knowledge[0]?.id) {
         await knowledgeRepo.incrementUsage(knowledge[0].id).catch(() => {});
       }
 
-      // 대화 저장
-      await conversationRepo.create({
+      const conversation = await conversationRepo.create({
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
@@ -266,6 +417,12 @@ webhookApp.post('/message', async (c) => {
         confidence: topSimilarity,
         response_time_ms: Date.now() - startTime,
       });
+      conversationId = conversation?.id;
+
+      // hedging 감지 → 불확실 주제 기록
+      if (/정확하지 않을 수|확인이 필요|아마|추후 확인/.test(answer)) {
+        await recordUncertainty(message, knowledge[0]?.category || '일반', topSimilarity, 'hedging').catch(() => {});
+      }
 
       logger.info('Response generated', {
         roomId, userName, model: aiModel,
@@ -277,7 +434,22 @@ webhookApp.post('/message', async (c) => {
     // 5. Rate limit 업데이트
     lastResponseMap.set(roomId, Date.now());
 
-    // 6. 인간다운 딜레이 계산 (봇 앱에서 적용)
+    // 6. 암시적 피드백을 위해 현재 대화 정보 Redis에 저장 (TTL 10분)
+    if (conversationId && !escalated) {
+      try {
+        await getRedis().setex(
+          `lastconv:${roomId}:${userName || 'unknown'}`,
+          600,
+          JSON.stringify({
+            conversationId,
+            knowledgeId: usedKnowledgeId,
+            embedding: embedding.slice(0, 100), // 메모리 절약: 처음 100차원만 저장
+          })
+        );
+      } catch {}
+    }
+
+    // 7. 인간다운 딜레이 계산
     const delay = humanizer.getResponseDelay();
 
     return c.json({
@@ -294,7 +466,42 @@ webhookApp.post('/message', async (c) => {
   }
 });
 
-// 상태 확인 엔드포인트 (봇 앱 연결 테스트용)
+// ===================== 불확실 주제 기록 =====================
+async function recordUncertainty(
+  question: string, category: string, similarity: number,
+  source?: string
+): Promise<void> {
+  const detectedSource = source || (similarity < 0.3 ? 'new_topic' : 'low_similarity');
+
+  // 같은 카테고리의 비슷한 불확실 주제가 이미 있는지 확인
+  const existing = await dbQueryOne(
+    `SELECT id, occurrence_count, avg_similarity FROM uncertainty_topics
+     WHERE category = $1 AND status = 'open'
+     AND similarity(topic, $2) > 0.5
+     LIMIT 1`,
+    [category, question]
+  ).catch(() => null);
+
+  if (existing) {
+    await dbQuery(
+      `UPDATE uncertainty_topics
+       SET occurrence_count = occurrence_count + 1,
+           avg_similarity = ($1 + avg_similarity * occurrence_count) / (occurrence_count + 1),
+           last_seen_at = NOW(),
+           sample_question = CASE WHEN LENGTH($2) > LENGTH(sample_question) THEN $2 ELSE sample_question END
+       WHERE id = $3`,
+      [similarity, question, existing.id]
+    ).catch(() => {});
+  } else {
+    await dbQuery(
+      `INSERT INTO uncertainty_topics (topic, category, sample_question, source, avg_similarity)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [question.substring(0, 200), category, question, detectedSource, similarity]
+    ).catch(() => {});
+  }
+}
+
+// 상태 확인 엔드포인트
 webhookApp.get('/status', async (c) => {
   return c.json({
     status: 'ok',
@@ -305,7 +512,6 @@ webhookApp.get('/status', async (c) => {
 
 // ===================== 프로액티브 메시징 엔드포인트 (봇 앱용) =====================
 
-// 대기중인 인사 메시지 조회 (봇 앱 폴링)
 webhookApp.get('/proactive/pending', async (c) => {
   try {
     const limit = parseInt(c.req.query('limit') || '5');
@@ -317,7 +523,6 @@ webhookApp.get('/proactive/pending', async (c) => {
   }
 });
 
-// 전송 결과 보고 (봇 앱 → API)
 webhookApp.post('/proactive/report', async (c) => {
   try {
     const body = await c.req.json();
@@ -342,7 +547,6 @@ webhookApp.post('/proactive/report', async (c) => {
 
 // ===================== n8n 자동화 엔드포인트 =====================
 
-// n8n cron → 비활성 방 자동 인사 생성
 webhookApp.post('/proactive/generate', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
@@ -410,7 +614,6 @@ webhookApp.post('/proactive/generate', async (c) => {
   }
 });
 
-// 방 차단 여부 확인 (봇 앱에서 캐시용)
 webhookApp.get('/blocks/check', async (c) => {
   try {
     const roomId = c.req.query('roomId');

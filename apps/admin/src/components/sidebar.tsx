@@ -7,7 +7,7 @@ import { trpc } from '@/lib/trpc';
 import {
   LayoutDashboard, BarChart3, BookOpen, PlusCircle, Upload, MessageSquare,
   AlertCircle, MessagesSquare, UserCheck, Bell, FileText, Users,
-  UserCog, Settings, LogOut,
+  UserCog, Settings, LogOut, AlertTriangle,
 } from 'lucide-react';
 
 const navSections = [
@@ -25,6 +25,7 @@ const navSections = [
       { href: '/knowledge/upload', label: '파일 업로드', icon: Upload },
       { href: '/knowledge/chat', label: '대화형 학습', icon: MessageSquare },
       { href: '/knowledge/feedback', label: '에스컬레이션', icon: AlertCircle, badge: true },
+      { href: '/knowledge/uncertainty', label: '불확실 주제', icon: AlertTriangle, badge: 'uncertainty' as any },
     ],
   },
   {
@@ -52,6 +53,9 @@ export function Sidebar() {
 
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery(undefined, {
     refetchInterval: 30000,
+  });
+  const { data: uncertaintyData } = trpc.uncertainty.openCount.useQuery(undefined, {
+    refetchInterval: 60000,
   });
 
   const handleLogout = () => {
@@ -85,7 +89,8 @@ export function Sidebar() {
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
-                const hasBadge = 'badge' in item && item.badge && pendingData && pendingData.count > 0;
+                const hasBadge = 'badge' in item && item.badge === true && pendingData && pendingData.count > 0;
+                const hasUncertaintyBadge = 'badge' in item && item.badge === 'uncertainty' && uncertaintyData && uncertaintyData.count > 0;
 
                 return (
                   <Link
@@ -103,6 +108,11 @@ export function Sidebar() {
                     {hasBadge && (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white leading-none">
                         {pendingData.count}
+                      </span>
+                    )}
+                    {hasUncertaintyBadge && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white leading-none">
+                        {uncertaintyData.count}
                       </span>
                     )}
                   </Link>

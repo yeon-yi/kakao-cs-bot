@@ -6,3 +6,4 @@ export { IdentityRepository } from './repositories/identity';
 export { ConfigRepository, PromptRepository, AnalyticsRepository } from './repositories/config';
 export { EscalationRepository } from './repositories/escalation';
 export { ProactiveRepository } from './repositories/proactive';
+export { UncertaintyRepository } from './repositories/uncertainty';

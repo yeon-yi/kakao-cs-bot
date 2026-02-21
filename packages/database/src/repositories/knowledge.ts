@@ -71,6 +71,13 @@ export class KnowledgeRepository {
     await query('UPDATE knowledge_base SET usage_count = usage_count + 1 WHERE id = $1', [id]);
   }
 
+  async adjustConfidence(id: string, delta: number): Promise<void> {
+    await query(
+      'UPDATE knowledge_base SET confidence_score = GREATEST(0.1, LEAST(1.0, confidence_score + $1)) WHERE id = $2',
+      [delta, id]
+    );
+  }
+
   async list(options?: { tier?: number; category?: string; offset?: number; limit?: number }) {
     const conditions: string[] = ['is_active = true'];
     const values: any[] = [];

@@ -723,5 +723,49 @@ CREATE INDEX IF NOT EXISTS idx_proactive_messages_scheduled_at
     ON proactive_messages (scheduled_at);
 
 -- ============================================================================
+-- 7. AI PERFECTION MIGRATION (2026-02-21)
+-- ============================================================================
+
+-- 7-1. knowledge_base 확장 (질문 변형 + 검증 시스템)
+ALTER TABLE knowledge_base
+  ADD COLUMN IF NOT EXISTS parent_knowledge_id UUID REFERENCES knowledge_base(id),
+  ADD COLUMN IF NOT EXISTS verification_status VARCHAR(20) DEFAULT 'unverified',
+  ADD COLUMN IF NOT EXISTS ai_interpretation TEXT,
+  ADD COLUMN IF NOT EXISTS verified_by VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_kb_parent ON knowledge_base(parent_knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_kb_verification ON knowledge_base(verification_status);
+
+-- 7-2. uncertainty_topics (불확실 주제 추적)
+CREATE TABLE IF NOT EXISTS uncertainty_topics (
+    id               BIGSERIAL PRIMARY KEY,
+    topic            TEXT NOT NULL,
+    category         VARCHAR(100),
+    sample_question  TEXT,
+    source           VARCHAR(50) NOT NULL DEFAULT 'low_similarity'
+                     CHECK (source IN ('low_similarity', 'hedging', 'new_topic', 'repeated_escalation', 'confidence_decay')),
+    occurrence_count INT NOT NULL DEFAULT 1,
+    avg_similarity   FLOAT,
+    status           VARCHAR(20) NOT NULL DEFAULT 'open'
+                     CHECK (status IN ('open', 'addressed', 'dismissed')),
+    resolved_knowledge_id UUID REFERENCES knowledge_base(id),
+    first_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at      TIMESTAMPTZ
+);
+
+COMMENT ON TABLE uncertainty_topics IS 'AI가 불확실한 주제를 실시간 추적. 관리자가 해결 가능';
+
+CREATE INDEX IF NOT EXISTS idx_uncertainty_status ON uncertainty_topics(status);
+CREATE INDEX IF NOT EXISTS idx_uncertainty_category ON uncertainty_topics(category);
+CREATE INDEX IF NOT EXISTS idx_uncertainty_last_seen ON uncertainty_topics(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_uncertainty_occurrence ON uncertainty_topics(occurrence_count DESC);
+
+-- pg_trgm index for similarity matching on uncertainty topics
+CREATE INDEX IF NOT EXISTS idx_uncertainty_topic_trgm
+    ON uncertainty_topics USING gin (topic gin_trgm_ops);
+
+-- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
