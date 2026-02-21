@@ -121,7 +121,7 @@ export default function SettingsPage() {
                         <Input
                           type={def.sensitive && !isEditing ? 'password' : 'text'}
                           value={currentVal}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, [def.key]: e.currentTarget.value }))}
+                          onChange={(e) => { const v = e.currentTarget.value; setEditValues(prev => ({ ...prev, [def.key]: v })); }}
                           onFocus={() => { if (masked && editValues[def.key] === undefined) setEditValues(prev => ({ ...prev, [def.key]: '' })); }}
                           placeholder={masked ? '(저장됨 - 클릭하여 변경)' : '값을 입력하세요'}
                           disabled={isSaving}
