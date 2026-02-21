@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea, Select } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, MessageSquare, X, CheckCircle2, XCircle, Brain } from 'lucide-react';
+import { AlertCircle, MessageSquare, X, CheckCircle2, XCircle, Brain, Camera, Video } from 'lucide-react';
 
 const STATUS_TABS = [
   { value: undefined, label: '전체' },
@@ -147,9 +147,18 @@ export default function EscalationPage() {
               <Card key={item.id} className="p-4">
                 <div className="flex justify-between items-start gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-zinc-900">{item.user_message}</p>
+                    <div className="flex items-center gap-2">
+                      {item.escalation_type === 'photo' && <Camera size={16} className="text-blue-500 shrink-0" />}
+                      {item.escalation_type === 'video' && <Video size={16} className="text-purple-500 shrink-0" />}
+                      <p className="font-medium text-zinc-900">{item.user_message}</p>
+                    </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Badge variant={badge.variant}>{badge.label}</Badge>
+                      {item.escalation_type && item.escalation_type !== 'low_confidence' && (
+                        <Badge variant={item.escalation_type === 'photo' ? 'primary' : 'purple'}>
+                          {item.escalation_type === 'photo' ? '사진' : item.escalation_type === 'video' ? '영상' : item.escalation_type}
+                        </Badge>
+                      )}
                       {item.category && <Badge variant="outline">{item.category}</Badge>}
                       <span className="text-xs text-zinc-400">
                         {item.user_name || item.user_id} / {item.room_id}
