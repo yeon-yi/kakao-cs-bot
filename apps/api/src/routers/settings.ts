@@ -16,7 +16,9 @@ function maskKey(value: string): string {
 const SETTING_DEFINITIONS = [
   // 봇 제어
   { key: 'bot.mode', label: '봇 모드', category: 'bot_control', sensitive: false, description: 'off / test / on (기본: off)' },
-  { key: 'bot.test_rooms', label: '테스트 방 목록', category: 'bot_control', sensitive: false, description: '테스트 모드에서 봇이 응답할 방 ID (쉼표 구분)' },
+  { key: 'bot.test_rooms', label: '테스트 방 목록', category: 'bot_control', sensitive: false, description: '테스트 모드에서 봇이 응답할 방 이름 (쉼표 구분)' },
+  { key: 'operation.start_time', label: '운영 시작 시간', category: 'bot_control', sensitive: false, description: 'HH:MM 형식 (기본: 09:50)' },
+  { key: 'operation.end_time', label: '운영 종료 시간', category: 'bot_control', sensitive: false, description: 'HH:MM 형식 (기본: 18:30)' },
   // AI API Keys
   { key: 'api.openai_key', label: 'OpenAI API Key', category: 'api_keys', sensitive: true, description: 'GPT-4o / GPT-4o mini / Embeddings' },
   { key: 'api.gemini_key', label: 'Gemini API Key', category: 'api_keys', sensitive: true, description: 'Google Gemini Flash (백업)' },
@@ -63,9 +65,16 @@ export const settingsRouter = router({
       for (const def of SETTING_DEFINITIONS) {
         const config = await configRepo.get(def.key).catch(() => null);
         if (config) {
-          const raw = typeof config.value === 'string' ? config.value : JSON.stringify(config.value);
+          // DB에서 JSON.stringify로 저장되므로 parse하여 원본 값 추출
+          let raw: string;
+          try {
+            const parsed = typeof config.value === 'string' ? JSON.parse(config.value) : config.value;
+            raw = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+          } catch {
+            raw = String(config.value);
+          }
           values[def.key] = {
-            value: def.sensitive ? maskKey(raw.replace(/"/g, '')) : raw.replace(/"/g, ''),
+            value: def.sensitive ? maskKey(raw) : raw,
             masked: def.sensitive,
           };
         }
@@ -85,7 +94,7 @@ export const settingsRouter = router({
       if (!def) throw new Error(`Unknown setting: ${input.key}`);
 
       // 빈 값이면 삭제하지 않고 빈 문자열 저장
-      await configRepo.set(input.key, JSON.stringify(input.value), ctx.userId);
+      await configRepo.set(input.key, input.value, ctx.userId);
 
       logger.info('Setting updated', {
         key: input.key,
@@ -109,7 +118,7 @@ export const settingsRouter = router({
       for (const s of input.settings) {
         const def = SETTING_DEFINITIONS.find(d => d.key === s.key);
         if (!def) continue;
-        await configRepo.set(s.key, JSON.stringify(s.value), ctx.userId);
+        await configRepo.set(s.key, s.value, ctx.userId);
         saved++;
       }
 

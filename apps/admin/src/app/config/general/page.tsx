@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Save, X, Check, Power, ShieldAlert, FlaskConical } from 'lucide-react';
+import { Save, X, Check, Power, ShieldAlert, FlaskConical, Clock } from 'lucide-react';
 
 interface SettingDef {
   key: string;
@@ -39,8 +39,8 @@ export default function SettingsPage() {
   const { data: values, refetch: refetchValues } = trpc.settings.getAll.useQuery();
   const setMutation = trpc.settings.set.useMutation();
 
-  const botMode = (values?.['bot.mode']?.value || 'off').replace(/"/g, '').trim();
-  const testRooms = (values?.['bot.test_rooms']?.value || '').replace(/"/g, '').trim();
+  const botMode = (values?.['bot.mode']?.value || 'off').trim();
+  const testRooms = (values?.['bot.test_rooms']?.value || '').trim();
 
   async function handleModeChange(newMode: string) {
     if (newMode === 'on') {
@@ -155,7 +155,7 @@ export default function SettingsPage() {
         {botMode === 'test' && (
           <div className="mt-4 pt-3 border-t border-amber-200/50">
             <p className="text-xs font-medium text-amber-700 mb-2">테스트 방 목록</p>
-            <p className="text-[11px] text-amber-600/70 mb-2">아래 방에서만 봇이 응답합니다. 쉼표로 구분하세요.</p>
+            <p className="text-[11px] text-amber-600/70 mb-2">아래 방에서만 봇이 응답합니다. 쉼표로 구분하세요. 테스트 모드는 운영시간 제한 없이 24시간 작동합니다.</p>
             <div className="flex gap-2 items-center">
               <Input
                 value={editValues['bot.test_rooms'] ?? testRooms}
@@ -184,6 +184,53 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+        {/* 운영시간 설정 */}
+        <div className="mt-4 pt-3 border-t border-zinc-200/50">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={14} className="text-zinc-500" />
+            <p className="text-xs font-medium text-zinc-700">운영 시간</p>
+            {botMode === 'test' && <Badge variant="outline" className="text-[10px]">테스트 모드: 24시간</Badge>}
+          </div>
+          <div className="flex gap-3 items-center">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-zinc-500">시작</span>
+              <Input
+                type="time"
+                value={editValues['operation.start_time'] ?? (values?.['operation.start_time']?.value || '09:50')}
+                onChange={(e) => setEditValues(prev => ({ ...prev, 'operation.start_time': e.currentTarget.value }))}
+                className="w-28 text-xs font-mono"
+              />
+            </div>
+            <span className="text-zinc-400">~</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-zinc-500">종료</span>
+              <Input
+                type="time"
+                value={editValues['operation.end_time'] ?? (values?.['operation.end_time']?.value || '18:30')}
+                onChange={(e) => setEditValues(prev => ({ ...prev, 'operation.end_time': e.currentTarget.value }))}
+                className="w-28 text-xs font-mono"
+              />
+            </div>
+            {(editValues['operation.start_time'] !== undefined || editValues['operation.end_time'] !== undefined) && (
+              <>
+                <Button onClick={async () => {
+                  if (editValues['operation.start_time'] !== undefined) await handleSave('operation.start_time');
+                  if (editValues['operation.end_time'] !== undefined) await handleSave('operation.end_time');
+                }} disabled={saving === 'operation.start_time' || saving === 'operation.end_time'} size="sm">
+                  <Save size={14} /> 저장
+                </Button>
+                <Button onClick={() => setEditValues(prev => {
+                  const next = { ...prev };
+                  delete next['operation.start_time'];
+                  delete next['operation.end_time'];
+                  return next;
+                })} variant="secondary" size="sm">
+                  <X size={14} />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       </Card>
 
       <div className="space-y-8">

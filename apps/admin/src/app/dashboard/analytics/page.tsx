@@ -23,6 +23,12 @@ function shortModel(model: string) {
   return model.replace('models/', '').replace('gemini-', 'G-').replace('gpt-', 'GPT-').replace('claude-', 'C-');
 }
 
+function fmtDate(d: any): string {
+  if (!d) return '-';
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
 export default function AnalyticsPage() {
   const [tab, setTab] = useState<'daily' | 'cost'>('daily');
   const [startDate, setStartDate] = useState(() => {
@@ -101,8 +107,8 @@ export default function AnalyticsPage() {
               </thead>
               <tbody>
                 {dailyData?.data.map((row) => (
-                  <tr key={row.date} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-zinc-900">{row.date}</td>
+                  <tr key={fmtDate(row.date)} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-zinc-900">{fmtDate(row.date)}</td>
                     <td className="px-4 py-3 text-right text-zinc-600">{row.totalMessages.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-zinc-600">{row.autoResponses.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-zinc-600">{row.adminEscalations}</td>
@@ -168,8 +174,8 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody>
                     {costData?.dailyTotals?.map((row) => (
-                      <tr key={row.date} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-zinc-900">{row.date}</td>
+                      <tr key={fmtDate(row.date)} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-zinc-900">{fmtDate(row.date)}</td>
                         <td className="px-4 py-3 text-right text-zinc-600">{row.conversations}건</td>
                         <td className="px-4 py-3 text-right font-mono text-zinc-900">${row.cost.toFixed(4)}</td>
                       </tr>
@@ -202,8 +208,8 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody>
                     {costData?.dailyByModel?.map((row, i) => (
-                      <tr key={`${row.date}-${row.model}-${i}`} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-zinc-900">{row.date}</td>
+                      <tr key={`${fmtDate(row.date)}-${row.model}-${i}`} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-zinc-900">{fmtDate(row.date)}</td>
                         <td className="px-4 py-3 text-zinc-700 font-mono text-xs">{shortModel(row.model)}</td>
                         <td className="px-4 py-3">
                           <Badge className={`text-[10px] ${PROVIDER_COLORS[row.provider] || 'bg-zinc-100 text-zinc-600'}`}>
@@ -218,8 +224,8 @@ export default function AnalyticsPage() {
                     ))}
                     {/* 단일 모델 대화 (chain_steps 없음) */}
                     {costData?.dailySingle?.map((row, i) => (
-                      <tr key={`single-${row.date}-${row.model}-${i}`} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors bg-zinc-50/30">
-                        <td className="px-4 py-3 font-medium text-zinc-900">{row.date}</td>
+                      <tr key={`single-${fmtDate(row.date)}-${row.model}-${i}`} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors bg-zinc-50/30">
+                        <td className="px-4 py-3 font-medium text-zinc-900">{fmtDate(row.date)}</td>
                         <td className="px-4 py-3 text-zinc-700 font-mono text-xs">{shortModel(row.model)}</td>
                         <td className="px-4 py-3">
                           <Badge className="text-[10px] bg-zinc-100 text-zinc-500">single</Badge>

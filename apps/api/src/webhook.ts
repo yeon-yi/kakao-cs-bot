@@ -63,6 +63,47 @@ async function findStaffInRoom(roomId: string): Promise<{ staffId: number; staff
   return null;
 }
 
+// DB 설정값 파싱 헬퍼 (JSON.stringify된 값 안전하게 추출)
+function parseConfigValue(config: any, fallback: string = ''): string {
+  if (!config?.value) return fallback;
+  try {
+    const parsed = JSON.parse(config.value);
+    return typeof parsed === 'string' ? parsed : String(parsed);
+  } catch {
+    return String(config.value);
+  }
+}
+
+// ===================== 운영시간 체크 (DB 우선, env 폴백, 5분 캐시) =====================
+let cachedOpHours: { start: string; end: string; loadedAt: number } | null = null;
+const OP_HOURS_CACHE_TTL = 300_000;
+
+async function isOperatingHoursFromDB(): Promise<boolean> {
+  const now = Date.now();
+  if (!cachedOpHours || now - cachedOpHours.loadedAt >= OP_HOURS_CACHE_TTL) {
+    const env = getEnv();
+    const [startConfig, endConfig] = await Promise.all([
+      configRepo.get('operation.start_time').catch(() => null),
+      configRepo.get('operation.end_time').catch(() => null),
+    ]);
+    cachedOpHours = {
+      start: parseConfigValue(startConfig, env.OPERATION_START_TIME || '09:50'),
+      end: parseConfigValue(endConfig, env.OPERATION_END_TIME || '18:30'),
+      loadedAt: now,
+    };
+  }
+
+  const tz = getEnv().OPERATION_TIMEZONE || 'Asia/Seoul';
+  const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
+  const kstNow = new Date(nowStr);
+  const [startH, startM] = cachedOpHours.start.split(':').map(Number);
+  const [endH, endM] = cachedOpHours.end.split(':').map(Number);
+  const current = kstNow.getHours() * 60 + kstNow.getMinutes();
+  const start = startH * 60 + startM;
+  const end = endH * 60 + endM;
+  return current >= start && current <= end;
+}
+
 // ===================== 에스컬레이션 임계값 (DB 연동, 5분 캐시) =====================
 let cachedThreshold: { value: number; loadedAt: number } | null = null;
 const THRESHOLD_CACHE_TTL = 300_000;
@@ -74,7 +115,7 @@ async function getEscalationThreshold(): Promise<number> {
   }
   try {
     const config = await configRepo.get('response.escalation_threshold');
-    const val = parseFloat(config?.value ?? '0.5');
+    const val = parseFloat(parseConfigValue(config, '0.5'));
     cachedThreshold = { value: isNaN(val) ? 0.5 : val, loadedAt: now };
   } catch {
     cachedThreshold = { value: 0.5, loadedAt: now };
@@ -299,24 +340,26 @@ webhookApp.post('/message', async (c) => {
 
     // 0-3. 봇 모드 체크 (off / test / on)
     const botModeConfig = await configRepo.get('bot.mode').catch(() => null);
-    const botMode = (botModeConfig?.value || 'off').replace(/"/g, '').trim();
+    const botMode = parseConfigValue(botModeConfig, 'off').trim();
 
     if (botMode === 'off') {
       return c.json({ answer: null, reason: 'bot_disabled' });
     }
 
+    let isTestMode = false;
     if (botMode === 'test') {
-      // 테스트 모드: 등록된 방에서만 응답
+      // 테스트 모드: 등록된 방에서만 응답 (운영시간 무시 - 24시간 테스트 가능)
       const testRoomsConfig = await configRepo.get('bot.test_rooms').catch(() => null);
-      const testRoomsStr = (testRoomsConfig?.value || '').replace(/"/g, '').trim();
+      const testRoomsStr = parseConfigValue(testRoomsConfig, '').trim();
       const testRooms = testRoomsStr ? testRoomsStr.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
 
       if (testRooms.length === 0 || !testRooms.includes(roomId)) {
         return c.json({ answer: null, reason: 'test_mode_excluded' });
       }
-      // 테스트 방이면 통과 → 정상 응답
+      isTestMode = true;
+      // 테스트 방이면 통과 → 운영시간 무시하고 정상 응답
     }
-    // botMode === 'on' → 전체 통과
+    // botMode === 'on' → 전체 통과 (운영시간 체크 필요)
 
     // 0-4. 사진/미디어 메시지 처리
     if (effectiveMessageType !== 'text') {
@@ -327,8 +370,8 @@ webhookApp.post('/message', async (c) => {
       });
     }
 
-    // 1. 운영 시간 체크
-    if (!humanizer.isOperatingHours()) {
+    // 1. 운영 시간 체크 (테스트 모드에서는 건너뜀 - 24시간 학습/테스트 가능)
+    if (!isTestMode && !(await isOperatingHoursFromDB())) {
       return c.json({ answer: null, reason: 'outside_hours' });
     }
 
@@ -919,17 +962,17 @@ async function loadChainOverrides(): Promise<void> {
 
     const overrides: { chainMode?: string; analyzer?: string; responder?: string; verifier?: string } = {};
 
-    const mode = modeConfig?.value;
-    if (mode && mode !== 'auto') overrides.chainMode = String(mode);
+    const mode = parseConfigValue(modeConfig, 'auto');
+    if (mode && mode !== 'auto') overrides.chainMode = mode;
 
-    const analyzer = analyzerConfig?.value;
-    if (analyzer && analyzer !== 'auto') overrides.analyzer = String(analyzer);
+    const analyzer = parseConfigValue(analyzerConfig, 'auto');
+    if (analyzer && analyzer !== 'auto') overrides.analyzer = analyzer;
 
-    const responder = responderConfig?.value;
-    if (responder && responder !== 'auto') overrides.responder = String(responder);
+    const responder = parseConfigValue(responderConfig, 'auto');
+    if (responder && responder !== 'auto') overrides.responder = responder;
 
-    const verifier = verifierConfig?.value;
-    if (verifier && verifier !== 'auto') overrides.verifier = String(verifier);
+    const verifier = parseConfigValue(verifierConfig, 'auto');
+    if (verifier && verifier !== 'auto') overrides.verifier = verifier;
 
     aiGateway.setManualOverrides(overrides);
     chainOverridesLoadedAt = now;
