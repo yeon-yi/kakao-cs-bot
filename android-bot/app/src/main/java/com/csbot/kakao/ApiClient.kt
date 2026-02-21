@@ -30,13 +30,14 @@ object ApiClient {
         val reason: String?
     )
 
-    fun sendMessage(roomId: String, userName: String, message: String, isGroupChat: Boolean): MessageResult? {
+    fun sendMessage(roomId: String, userName: String, message: String, isGroupChat: Boolean, messageType: String = "text"): MessageResult? {
         return try {
             val body = JSONObject().apply {
                 put("roomId", roomId)
                 put("userName", userName)
                 put("message", message)
                 put("isGroupChat", isGroupChat)
+                if (messageType != "text") put("messageType", messageType)
             }
 
             val request = Request.Builder()

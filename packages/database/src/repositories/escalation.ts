@@ -6,14 +6,15 @@ type EscalationInsert = Database['public']['Tables']['escalations']['Insert'];
 export class EscalationRepository {
   async create(input: EscalationInsert) {
     const row = await queryOne(
-      `INSERT INTO escalations (conversation_id, room_id, user_id, user_name, user_message, bot_response, category, confidence, status, assigned_to)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO escalations (conversation_id, room_id, user_id, user_name, user_message, bot_response, category, confidence, status, assigned_to, escalation_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         input.conversation_id ?? null, input.room_id, input.user_id,
         input.user_name ?? null, input.user_message, input.bot_response ?? null,
         input.category ?? null, input.confidence ?? null,
         input.status ?? 'pending', input.assigned_to ?? null,
+        input.escalation_type ?? 'low_confidence',
       ]
     );
     return row;

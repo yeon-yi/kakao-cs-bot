@@ -29,6 +29,11 @@ const SETTING_DEFINITIONS = [
   // Response
   { key: 'response.max_length', label: '최대 응답 길이', category: 'response', sensitive: false, description: '봇 응답 최대 글자 수' },
   { key: 'response.escalation_threshold', label: '에스컬레이션 임계값', category: 'response', sensitive: false, description: '이 신뢰도 이하면 사람에게 전달' },
+  // AI Chain (멀티모델 체인)
+  { key: 'ai.chain_mode', label: '체인 모드', category: 'ai_chain', sensitive: false, description: 'auto / single / 2-chain / 3-chain (기본: auto)' },
+  { key: 'ai.chain_analyzer', label: '분석 모델', category: 'ai_chain', sensitive: false, description: 'auto / openai / gemini / anthropic (기본: auto)' },
+  { key: 'ai.chain_responder', label: '응답 모델', category: 'ai_chain', sensitive: false, description: 'auto / openai / gemini / anthropic (기본: auto)' },
+  { key: 'ai.chain_verifier', label: '검증 모델', category: 'ai_chain', sensitive: false, description: 'auto / openai / gemini / anthropic (기본: auto)' },
   // Webhook / Integration (확장 가능)
   { key: 'webhook.slack_url', label: 'Slack Webhook URL', category: 'integrations', sensitive: true, description: '에스컬레이션 알림용' },
   { key: 'webhook.n8n_url', label: 'n8n Webhook URL', category: 'integrations', sensitive: false, description: 'n8n 워크플로우 연동' },

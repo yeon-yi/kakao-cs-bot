@@ -6,8 +6,8 @@ type ConversationInsert = Database['public']['Tables']['conversations']['Insert'
 export class ConversationRepository {
   async create(input: ConversationInsert) {
     const row = await queryOne(
-      `INSERT INTO conversations (room_id, user_id, user_name, user_message, bot_response, context, knowledge_tier, ai_model, confidence, was_helpful, response_time_ms)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO conversations (room_id, user_id, user_name, user_message, bot_response, context, knowledge_tier, ai_model, confidence, was_helpful, response_time_ms, message_type, chain_steps)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         input.room_id, input.user_id, input.user_name ?? null,
@@ -16,6 +16,8 @@ export class ConversationRepository {
         input.knowledge_tier ?? null, input.ai_model ?? null,
         input.confidence ?? null, input.was_helpful ?? null,
         input.response_time_ms ?? null,
+        input.message_type ?? 'text',
+        input.chain_steps ?? null,
       ]
     );
     return row;

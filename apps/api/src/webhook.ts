@@ -268,7 +268,8 @@ webhookApp.post('/message', async (c) => {
 
   try {
     const body = await c.req.json();
-    const { roomId, userName, message, isGroupChat } = body;
+    const { roomId, userName, message, isGroupChat, messageType, imageUrl } = body;
+    const effectiveMessageType: string = messageType || 'text';
 
     if (!roomId || !message) {
       return c.json({ error: 'roomId and message are required' }, 400);
@@ -294,6 +295,15 @@ webhookApp.post('/message', async (c) => {
     const isBlocked = await proactiveRepo.isBlocked(roomId).catch(() => false);
     if (isBlocked) {
       return c.json({ answer: null, reason: 'room_blocked' });
+    }
+
+    // 0-3. 사진/미디어 메시지 처리
+    if (effectiveMessageType !== 'text') {
+      return await handleNonTextMessage(c, {
+        roomId, userName: userName || 'unknown', message,
+        isGroupChat, messageType: effectiveMessageType, imageUrl,
+        startTime,
+      });
     }
 
     // 1. 운영 시간 체크
@@ -414,26 +424,51 @@ webhookApp.post('/message', async (c) => {
 
       logger.info('Escalation created', { roomId, userName, category, similarity: topSimilarity, threshold, assignedTo: assignedSource || 'none' });
     } else {
-      // 4b. 정상 응답
+      // 4b. 정상 응답 (멀티모델 체인 지원)
       const knowledgeContext = knowledge
         .map(k => `Q: ${k.question}\nA: ${k.answer}`)
         .join('\n\n');
 
-      const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext);
+      // 체인 전략 확인 → 수동 설정 로드
+      await loadChainOverrides();
 
-      const response = await aiGateway.generate({
-        prompt: combinedMessage,
-        systemPrompt,
-        temperature: 0.3,
-      });
+      const strategy = aiGateway.resolveChainStrategy();
+      let responseText: string;
+      let chainStepsJson: any = null;
 
-      aiModel = response.model;
+      if (strategy.mode !== 'single') {
+        // 멀티모델 체인 실행
+        const chainResult = await aiGateway.generateChain(
+          combinedMessage, knowledgeContext, historyContext
+        );
+        responseText = chainResult.finalText;
+        aiModel = chainResult.steps.map(s => s.model).join(' → ');
+        chainStepsJson = chainResult.steps.map(s => ({
+          role: s.role, model: s.model, provider: s.provider,
+          tokens: s.tokensUsed, cost: s.cost, latencyMs: s.latencyMs,
+        }));
+        logger.info('Chain response', {
+          roomId, mode: chainResult.mode, models: aiModel,
+          totalCost: chainResult.totalCost, latencyMs: chainResult.totalLatencyMs,
+        });
+      } else {
+        // 단일 모델 (기존 동작)
+        const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext);
+        const response = await aiGateway.generate({
+          prompt: combinedMessage,
+          systemPrompt,
+          temperature: 0.3,
+        });
+        responseText = response.text;
+        aiModel = response.model;
+      }
+
       knowledgeTier = knowledge[0]?.tier ?? null;
       usedKnowledgeId = knowledge[0]?.id ?? null;
 
       // 인간화 (톤 분석 포함)
       const isThankYou = /감사|고마|ㄱㅅ/.test(combinedMessage);
-      answer = humanizer.humanizeResponse(response.text, {
+      answer = humanizer.humanizeResponse(responseText, {
         isThankYou,
         customerMessage: combinedMessage,
         hasHistory: historyContext.length > 0,
@@ -454,6 +489,7 @@ webhookApp.post('/message', async (c) => {
         ai_model: aiModel,
         confidence: topSimilarity,
         response_time_ms: Date.now() - startTime,
+        chain_steps: chainStepsJson ? JSON.stringify(chainStepsJson) : null,
       });
       conversationId = conversation?.id;
 
@@ -465,6 +501,7 @@ webhookApp.post('/message', async (c) => {
       logger.info('Response generated', {
         roomId, userName, model: aiModel,
         similarity: topSimilarity, tier: knowledgeTier,
+        chainMode: strategy.mode,
         latencyMs: Date.now() - startTime,
       });
     }
@@ -723,6 +760,163 @@ webhookApp.get('/blocks/check', async (c) => {
     return c.json({ blocked: false });
   }
 });
+
+// ===================== 사진/미디어 메시지 처리 =====================
+const PHOTO_RESPONSE_TEMPLATES = [
+  '네 대표님, 사진 확인했습니다! 확인 후 안내드리겠습니다.',
+  '사진 잘 받았습니다. 확인해보고 바로 말씀드릴게요!',
+  '네, 사진 확인했어요! 내용 검토 후 연락드리겠습니다.',
+  '사진 전달 감사합니다! 확인해보고 안내드릴게요~',
+  '네 대표님, 사진 잘 받았습니다. 확인 후 답변드리겠습니다!',
+];
+
+const VIDEO_RESPONSE_TEMPLATES = [
+  '네 대표님, 영상 확인했습니다! 검토 후 안내드리겠습니다.',
+  '영상 잘 받았습니다. 확인해보고 말씀드릴게요!',
+  '네, 영상 확인했어요! 내용 검토 후 연락드리겠습니다.',
+];
+
+interface NonTextMessageParams {
+  roomId: string;
+  userName: string;
+  message: string;
+  isGroupChat?: boolean;
+  messageType: string;
+  imageUrl?: string;
+  startTime: number;
+}
+
+async function handleNonTextMessage(c: any, params: NonTextMessageParams) {
+  const { roomId, userName, message, isGroupChat, messageType, imageUrl, startTime } = params;
+
+  // 미디어 유형별 응답 템플릿 선택
+  const templates = messageType === 'video' ? VIDEO_RESPONSE_TEMPLATES : PHOTO_RESPONSE_TEMPLATES;
+  const templateResponse = templates[Math.floor(Math.random() * templates.length)];
+  const answer = humanizer.humanizeResponse(templateResponse, { isThankYou: false });
+
+  // 최근 대화 맥락으로 카테고리 분류
+  let category: string | null = null;
+  try {
+    const history = await conversationRepo.getHistory(roomId, userName, 3);
+    if (history && history.length > 0) {
+      const recentMessages = history.map((h: any) => h.user_message).filter(Boolean).join(' ');
+      category = await classifyCategory(recentMessages);
+    } else {
+      category = '일반';
+    }
+  } catch {
+    category = '일반';
+  }
+
+  // 대화 기록 저장 (message_type 포함)
+  const conversation = await conversationRepo.create({
+    room_id: roomId,
+    user_id: userName,
+    user_name: userName,
+    user_message: `[${messageType === 'video' ? '영상' : '사진'}] ${message}`,
+    bot_response: answer,
+    context: { isGroupChat, imageUrl: imageUrl || null },
+    knowledge_tier: null,
+    ai_model: null,
+    confidence: null,
+    response_time_ms: Date.now() - startTime,
+    message_type: messageType,
+  });
+
+  // 에스컬레이션 생성 (사진/영상 전용)
+  let assignedStaffId: number | null = null;
+
+  // 1) 톡방 소속 직원 우선
+  const roomStaff = await findStaffInRoom(roomId).catch(() => null);
+  if (roomStaff) {
+    assignedStaffId = roomStaff.staffId;
+  }
+
+  // 2) 카테고리 담당자
+  if (!assignedStaffId && category) {
+    const categoryAssignee = await escalationRepo.getAssigneeByCategory(category, roomId).catch(() => null);
+    if (categoryAssignee) {
+      assignedStaffId = (categoryAssignee as any).staff_id;
+    }
+  }
+
+  // 최근 대화 맥락 500자 첨부
+  let contextSummary = '';
+  try {
+    const historyText = await getConversationHistory(roomId, userName);
+    if (historyText) {
+      contextSummary = historyText.substring(0, 500);
+    }
+  } catch {}
+
+  await escalationRepo.create({
+    conversation_id: conversation?.id,
+    room_id: roomId,
+    user_id: userName,
+    user_name: userName,
+    user_message: `[${messageType === 'video' ? '영상' : '사진'}] ${message}${contextSummary ? '\n\n--- 최근 대화 ---\n' + contextSummary : ''}`,
+    bot_response: answer,
+    category,
+    confidence: null,
+    status: assignedStaffId ? 'assigned' : 'pending',
+    assigned_to: assignedStaffId,
+    escalation_type: messageType === 'video' ? 'video' : 'photo',
+  });
+
+  logger.info('Non-text message escalated', {
+    roomId, userName, messageType, category,
+    assignedTo: assignedStaffId || 'none',
+    latencyMs: Date.now() - startTime,
+  });
+
+  const delay = humanizer.getResponseDelay();
+  return c.json({
+    answer,
+    delay,
+    escalated: true,
+    category,
+    messageType,
+    processingMs: Date.now() - startTime,
+  });
+}
+
+// ===================== 체인 설정 로드 (DB → aiGateway) =====================
+let chainOverridesLoadedAt = 0;
+const CHAIN_OVERRIDES_CACHE_TTL = 300_000; // 5분
+
+async function loadChainOverrides(): Promise<void> {
+  const now = Date.now();
+  if (now - chainOverridesLoadedAt < CHAIN_OVERRIDES_CACHE_TTL) return;
+
+  try {
+    const [modeConfig, analyzerConfig, responderConfig, verifierConfig] = await Promise.all([
+      configRepo.get('ai.chain_mode').catch(() => null),
+      configRepo.get('ai.chain_analyzer').catch(() => null),
+      configRepo.get('ai.chain_responder').catch(() => null),
+      configRepo.get('ai.chain_verifier').catch(() => null),
+    ]);
+
+    const overrides: { chainMode?: string; analyzer?: string; responder?: string; verifier?: string } = {};
+
+    const mode = modeConfig?.value;
+    if (mode && mode !== 'auto') overrides.chainMode = String(mode);
+
+    const analyzer = analyzerConfig?.value;
+    if (analyzer && analyzer !== 'auto') overrides.analyzer = String(analyzer);
+
+    const responder = responderConfig?.value;
+    if (responder && responder !== 'auto') overrides.responder = String(responder);
+
+    const verifier = verifierConfig?.value;
+    if (verifier && verifier !== 'auto') overrides.verifier = String(verifier);
+
+    aiGateway.setManualOverrides(overrides);
+    chainOverridesLoadedAt = now;
+  } catch (e) {
+    logger.warn('Failed to load chain overrides', { error: String(e) });
+    chainOverridesLoadedAt = now; // 실패해도 캐시하여 반복 호출 방지
+  }
+}
 
 // AI 카테고리 분류
 async function classifyCategory(message: string): Promise<string> {

@@ -24,7 +24,8 @@ object BotEngine {
         Regex("^[ㅋㅎㅠㅜㅇ]+$"),
         Regex("^(ㅇㅇ|ㅇㅋ|ㅎㅇ|ㄴㄴ|ㄱㄱ|ㄱㅅ)$")
     )
-    private val SKIP_MESSAGES = setOf("사진", "동영상", "이모티콘")
+    private val SKIP_MESSAGES = setOf("이모티콘")
+    private val MEDIA_MESSAGE_TYPES = mapOf("사진" to "image", "동영상" to "video")
 
     fun handleMessage(
         room: String,
@@ -69,7 +70,8 @@ object BotEngine {
                     if (blocked) return@execute
                 } else if (cached.first) return@execute
 
-                val result = ApiClient.sendMessage(room, sender, message, isGroupChat)
+                val mediaType = MEDIA_MESSAGE_TYPES[message]
+                val result = ApiClient.sendMessage(room, sender, message, isGroupChat, mediaType ?: "text")
                 if (result == null) {
                     errorCount++
                     return@execute

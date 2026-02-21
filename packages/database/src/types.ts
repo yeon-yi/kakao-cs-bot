@@ -131,6 +131,8 @@ export type Database = {
           confidence: number | null;
           was_helpful: boolean | null;
           response_time_ms: number | null;
+          message_type: string;
+          chain_steps: Json | null;
           created_at: string;
         };
         Insert: {
@@ -146,6 +148,8 @@ export type Database = {
           confidence?: number | null;
           was_helpful?: boolean | null;
           response_time_ms?: number | null;
+          message_type?: string;
+          chain_steps?: Json | null;
           created_at?: string;
         };
         Update: {
@@ -161,6 +165,8 @@ export type Database = {
           confidence?: number | null;
           was_helpful?: boolean | null;
           response_time_ms?: number | null;
+          message_type?: string;
+          chain_steps?: Json | null;
           created_at?: string;
         };
         Relationships: [];
@@ -469,6 +475,7 @@ export type Database = {
           answered_at: string | null;
           knowledge_id: string | null;
           replied_at: string | null;
+          escalation_type: string;
           created_at: string;
         };
         Insert: {
@@ -489,6 +496,7 @@ export type Database = {
           answered_at?: string | null;
           knowledge_id?: string | null;
           replied_at?: string | null;
+          escalation_type?: string;
           created_at?: string;
         };
         Update: {
@@ -509,6 +517,7 @@ export type Database = {
           answered_at?: string | null;
           knowledge_id?: string | null;
           replied_at?: string | null;
+          escalation_type?: string;
           created_at?: string;
         };
         Relationships: [];

@@ -798,5 +798,21 @@ CREATE INDEX IF NOT EXISTS idx_devices_status ON connected_devices(status);
 CREATE INDEX IF NOT EXISTS idx_devices_heartbeat ON connected_devices(last_heartbeat);
 
 -- ============================================================================
+-- 9. PHOTO ESCALATION + MULTI-MODEL CHAIN (2026-02-21)
+-- ============================================================================
+
+-- 9-1. escalation_type: 에스컬레이션 유형 구분
+ALTER TABLE escalations
+  ADD COLUMN IF NOT EXISTS escalation_type VARCHAR(50) DEFAULT 'low_confidence';
+
+-- 9-2. message_type: 메시지 유형 (text/image/video/sticker)
+ALTER TABLE conversations
+  ADD COLUMN IF NOT EXISTS message_type VARCHAR(20) DEFAULT 'text';
+
+-- 9-3. chain_steps: 멀티모델 체인 단계별 추적
+ALTER TABLE conversations
+  ADD COLUMN IF NOT EXISTS chain_steps JSONB DEFAULT NULL;
+
+-- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
