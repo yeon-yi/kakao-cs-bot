@@ -99,37 +99,59 @@ export class EscalationRepository {
     );
   }
 
-  // Category assignees
+  // Category assignees (다중 담당자 지원)
   async getAssignees() {
     return query(
-      `SELECT ca.*, json_build_object('id', cs.id, 'real_name', cs.real_name, 'department', cs.department, 'kakao_name', cs.kakao_name) as company_staff
+      `SELECT ca.id, ca.category, ca.staff_id, ca.room_id,
+              json_build_object('id', cs.id, 'real_name', cs.real_name, 'department', cs.department, 'kakao_name', cs.kakao_name) as company_staff
        FROM category_assignees ca
        JOIN company_staff cs ON cs.id = ca.staff_id
-       ORDER BY ca.category`
+       ORDER BY ca.category, ca.room_id NULLS FIRST`
     );
   }
 
-  async setAssignee(category: string, staffId: number) {
+  async addAssignee(category: string, staffId: number, roomId?: string) {
     return queryOne(
-      `INSERT INTO category_assignees (category, staff_id)
-       VALUES ($1, $2)
-       ON CONFLICT (category) DO UPDATE SET staff_id = EXCLUDED.staff_id
+      `INSERT INTO category_assignees (category, staff_id, room_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (category, staff_id, COALESCE(room_id, '')) DO NOTHING
        RETURNING *`,
-      [category, staffId]
+      [category, staffId, roomId || null]
     );
   }
 
-  async removeAssignee(category: string) {
+  async removeAssigneeById(id: number) {
+    await query('DELETE FROM category_assignees WHERE id = $1', [id]);
+  }
+
+  async removeAssigneesByCategory(category: string) {
     await query('DELETE FROM category_assignees WHERE category = $1', [category]);
   }
 
-  async getAssigneeByCategory(category: string) {
-    return queryOne(
+  async getAssigneesByCategory(category: string, roomId?: string) {
+    // 톡방별 담당자 우선, 없으면 전체(room_id IS NULL) 담당자
+    const roomAssignees = roomId ? await query(
       `SELECT ca.*, json_build_object('id', cs.id, 'real_name', cs.real_name, 'kakao_name', cs.kakao_name) as company_staff
        FROM category_assignees ca
        JOIN company_staff cs ON cs.id = ca.staff_id
-       WHERE ca.category = $1`,
+       WHERE ca.category = $1 AND ca.room_id = $2`,
+      [category, roomId]
+    ) : [];
+    if (roomAssignees.length > 0) return roomAssignees;
+
+    return query(
+      `SELECT ca.*, json_build_object('id', cs.id, 'real_name', cs.real_name, 'kakao_name', cs.kakao_name) as company_staff
+       FROM category_assignees ca
+       JOIN company_staff cs ON cs.id = ca.staff_id
+       WHERE ca.category = $1 AND ca.room_id IS NULL`,
       [category]
     );
+  }
+
+  // 하위호환: 단일 담당자 반환 (랜덤 선택)
+  async getAssigneeByCategory(category: string, roomId?: string) {
+    const assignees = await this.getAssigneesByCategory(category, roomId);
+    if (assignees.length === 0) return null;
+    return assignees[Math.floor(Math.random() * assignees.length)];
   }
 }

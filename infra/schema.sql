@@ -653,13 +653,17 @@ CREATE INDEX IF NOT EXISTS idx_escalations_created_at
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS category_assignees (
     id          SERIAL          PRIMARY KEY,
-    category    VARCHAR(100)    NOT NULL UNIQUE,
+    category    VARCHAR(100)    NOT NULL,
     staff_id    INT             NOT NULL REFERENCES company_staff(id),
+    room_id     VARCHAR(200),
     created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE category_assignees IS 'Maps knowledge categories to responsible staff members';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_category_assignees_unique
+    ON category_assignees (category, staff_id, COALESCE(room_id, ''));
+
+COMMENT ON TABLE category_assignees IS 'Maps knowledge categories to responsible staff members (multi-assignee, per-room)';
 
 CREATE TRIGGER trg_category_assignees_updated_at
     BEFORE UPDATE ON category_assignees

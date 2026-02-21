@@ -6,13 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { UserCog, Plus, Pencil, Trash2, Check, X, Type } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { UserCog, Plus, Trash2, Check, X, Type, Users, Hash } from 'lucide-react';
 
 const DEFAULT_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
 export default function AssigneesPage() {
-  const [editCategory, setEditCategory] = useState<string | null>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
+  const [addingCategory, setAddingCategory] = useState<string | null>(null);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<number[]>([]);
+  const [addRoomId, setAddRoomId] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -27,15 +29,15 @@ export default function AssigneesPage() {
 
   const categories: string[] = categoriesConfig?.value ?? DEFAULT_CATEGORIES;
 
-  const setMutation = trpc.escalation.assignees.set.useMutation({
-    onSuccess: () => {
-      utils.escalation.assignees.list.invalidate();
-      setEditCategory(null);
-      setSelectedStaffId(null);
-    },
+  const addMutation = trpc.escalation.assignees.add.useMutation({
+    onSuccess: () => utils.escalation.assignees.list.invalidate(),
   });
 
-  const removeMutation = trpc.escalation.assignees.remove.useMutation({
+  const removeByIdMutation = trpc.escalation.assignees.removeById.useMutation({
+    onSuccess: () => utils.escalation.assignees.list.invalidate(),
+  });
+
+  const removeCategoryMutation = trpc.escalation.assignees.remove.useMutation({
     onSuccess: () => utils.escalation.assignees.list.invalidate(),
   });
 
@@ -43,12 +45,32 @@ export default function AssigneesPage() {
     onSuccess: () => utils.config.get.invalidate({ key: 'escalation.categories' }),
   });
 
-  const assigneeMap = new Map<string, any>();
-  assignees?.forEach((a: any) => assigneeMap.set(a.category, a));
+  // 카테고리별 담당자 그룹핑
+  const assigneesByCategory = new Map<string, any[]>();
+  assignees?.forEach((a: any) => {
+    const list = assigneesByCategory.get(a.category) || [];
+    list.push(a);
+    assigneesByCategory.set(a.category, list);
+  });
 
-  function handleSave(category: string) {
-    if (!selectedStaffId) return;
-    setMutation.mutate({ category, staffId: selectedStaffId });
+  function handleAddAssignees(category: string) {
+    if (selectedStaffIds.length === 0) return;
+    const roomId = addRoomId.trim() || undefined;
+    Promise.all(
+      selectedStaffIds.map(staffId =>
+        addMutation.mutateAsync({ category, staffId, roomId })
+      )
+    ).then(() => {
+      setAddingCategory(null);
+      setSelectedStaffIds([]);
+      setAddRoomId('');
+    });
+  }
+
+  function toggleStaff(staffId: number) {
+    setSelectedStaffIds(prev =>
+      prev.includes(staffId) ? prev.filter(id => id !== staffId) : [...prev, staffId]
+    );
   }
 
   function saveCategories(newList: string[]) {
@@ -64,7 +86,7 @@ export default function AssigneesPage() {
 
   function removeCategory(cat: string) {
     if (!confirm(`"${cat}" 카테고리를 삭제하시겠습니까?\n해당 카테고리의 담당자 설정도 함께 해제됩니다.`)) return;
-    if (assigneeMap.has(cat)) removeMutation.mutate({ category: cat });
+    removeCategoryMutation.mutate({ category: cat });
     saveCategories(categories.filter(c => c !== cat));
   }
 
@@ -78,25 +100,20 @@ export default function AssigneesPage() {
     if (!newName || newName === oldName) { setRenamingCategory(null); return; }
     if (categories.includes(newName)) { alert('이미 존재하는 카테고리 이름입니다.'); return; }
     saveCategories(categories.map(c => c === oldName ? newName : c));
-    const existing = assigneeMap.get(oldName);
-    if (existing) {
-      removeMutation.mutate({ category: oldName });
-      setMutation.mutate({ category: newName, staffId: existing.staff_id });
-    }
     setRenamingCategory(null);
   }
 
   const isLoading = assigneesLoading || staffLoading;
-  const assignedCount = categories.filter(c => assigneeMap.has(c)).length;
+  const assignedCount = categories.filter(c => assigneesByCategory.has(c)).length;
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-zinc-900">담당자 배정</h1>
             <p className="text-sm text-zinc-500 mt-1">
-              에스컬레이션 발생 시 카테고리별로 담당자를 자동 배정합니다. 미지정 카테고리는 전체 담당자에게 배정됩니다.
+              카테고리별로 다중 담당자를 배정합니다. 톡방별로 다른 담당자를 지정할 수도 있습니다.
             </p>
           </div>
           <Badge variant="outline" className="text-xs">
@@ -111,122 +128,180 @@ export default function AssigneesPage() {
         </div>
       ) : (
         <>
-          <Card className="p-0 overflow-hidden mb-5">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-50">
-                  <th className="px-4 py-3 text-left font-medium text-zinc-600">카테고리</th>
-                  <th className="px-4 py-3 text-left font-medium text-zinc-600">담당자</th>
-                  <th className="px-4 py-3 text-right font-medium text-zinc-600 w-48">작업</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((category) => {
-                  const assignee = assigneeMap.get(category);
-                  const staff = assignee?.company_staff;
-                  const isEditing = editCategory === category;
-                  const isRenaming = renamingCategory === category;
+          <div className="space-y-3 mb-5">
+            {categories.map((category) => {
+              const catAssignees = assigneesByCategory.get(category) || [];
+              const isAdding = addingCategory === category;
+              const isRenaming = renamingCategory === category;
 
-                  return (
-                    <tr key={category} className="border-b last:border-0 hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-zinc-900">
-                        {isRenaming ? (
-                          <div className="flex gap-1.5 items-center">
-                            <Input
-                              type="text" value={renameValue}
-                              onChange={(e) => setRenameValue(e.currentTarget.value)}
-                              className="w-32 text-sm"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') confirmRename(category);
-                                if (e.key === 'Escape') setRenamingCategory(null);
-                              }}
-                            />
-                            <button onClick={() => confirmRename(category)}
-                              className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50">
-                              <Check size={14} />
-                            </button>
-                            <button onClick={() => setRenamingCategory(null)}
-                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="cursor-pointer hover:text-blue-600"
-                            onDoubleClick={() => startRename(category)} title="더블클릭하여 이름 변경">
-                            {category}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isEditing ? (
-                          <select value={selectedStaffId ?? ''}
-                            onChange={(e) => setSelectedStaffId(Number(e.currentTarget.value) || null)}
-                            className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                            autoFocus>
-                            <option value="">선택하세요</option>
-                            {staffList?.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.real_name} {s.department ? `(${s.department})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        ) : staff ? (
-                          <span className="text-zinc-700">
-                            {staff.real_name}
-                            {staff.department && <span className="text-zinc-400 ml-1">({staff.department})</span>}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-300 text-xs">미지정</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isEditing ? (
-                          <div className="flex gap-1.5 justify-end">
-                            <Button size="sm" onClick={() => handleSave(category)}
-                              disabled={!selectedStaffId || setMutation.isPending}>
-                              저장
-                            </Button>
-                            <Button size="sm" variant="secondary"
-                              onClick={() => { setEditCategory(null); setSelectedStaffId(null); }}>
-                              취소
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => { setEditCategory(category); setSelectedStaffId(assignee?.staff_id ?? null); }}
-                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
-                              title={staff ? '담당자 변경' : '담당자 지정'}>
-                              <UserCog size={14} />
-                            </button>
-                            <button onClick={() => startRename(category)}
-                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
-                              title="이름 변경">
-                              <Type size={14} />
-                            </button>
-                            {staff && (
-                              <button onClick={() => removeMutation.mutate({ category })}
-                                disabled={removeMutation.isPending}
-                                className="rounded-lg p-1.5 text-zinc-400 hover:bg-orange-50 hover:text-orange-600"
-                                title="담당자 해제">
-                                <X size={14} />
-                              </button>
-                            )}
-                            <button onClick={() => removeCategory(category)}
-                              className="rounded-lg p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600"
-                              title="카테고리 삭제">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
+              // 톡방별 그룹핑
+              const globalAssignees = catAssignees.filter((a: any) => !a.room_id);
+              const roomGroups = new Map<string, any[]>();
+              catAssignees.filter((a: any) => a.room_id).forEach((a: any) => {
+                const list = roomGroups.get(a.room_id) || [];
+                list.push(a);
+                roomGroups.set(a.room_id, list);
+              });
 
+              return (
+                <Card key={category} className="p-4">
+                  {/* 카테고리 헤더 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {isRenaming ? (
+                        <div className="flex gap-1.5 items-center">
+                          <Input type="text" value={renameValue}
+                            onChange={(e) => setRenameValue(e.currentTarget.value)}
+                            className="w-40 text-sm" autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') confirmRename(category);
+                              if (e.key === 'Escape') setRenamingCategory(null);
+                            }}
+                          />
+                          <button onClick={() => confirmRename(category)}
+                            className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-50">
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setRenamingCategory(null)}
+                            className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="font-semibold text-zinc-900 cursor-pointer hover:text-blue-600"
+                          onDoubleClick={() => startRename(category)} title="더블클릭하여 이름 변경">
+                          {category}
+                        </span>
+                      )}
+                      {catAssignees.length > 0 && (
+                        <Badge variant="primary" className="text-[10px]">
+                          {catAssignees.length}명
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => {
+                        setAddingCategory(isAdding ? null : category);
+                        setSelectedStaffIds([]);
+                        setAddRoomId('');
+                      }}
+                        className={cn(
+                          'rounded-lg p-1.5 transition-colors',
+                          isAdding ? 'bg-blue-50 text-blue-600' : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'
+                        )}
+                        title="담당자 추가">
+                        <UserCog size={14} />
+                      </button>
+                      <button onClick={() => startRename(category)}
+                        className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                        title="이름 변경">
+                        <Type size={14} />
+                      </button>
+                      <button onClick={() => removeCategory(category)}
+                        className="rounded-lg p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                        title="카테고리 삭제">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 담당자 목록 */}
+                  {catAssignees.length === 0 && !isAdding && (
+                    <p className="text-xs text-zinc-300 py-1">미지정</p>
+                  )}
+
+                  {/* 전체 담당자 */}
+                  {globalAssignees.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1">
+                      {globalAssignees.map((a: any) => (
+                        <span key={a.id}
+                          className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                          <Users size={11} />
+                          {a.company_staff.real_name}
+                          {a.company_staff.department && (
+                            <span className="text-blue-400">({a.company_staff.department})</span>
+                          )}
+                          <button onClick={() => removeByIdMutation.mutate({ id: a.id })}
+                            className="ml-0.5 rounded-full p-0.5 hover:bg-blue-200/60" title="제거">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 톡방별 담당자 */}
+                  {Array.from(roomGroups.entries()).map(([roomId, roomAssignees]) => (
+                    <div key={roomId} className="flex flex-wrap items-center gap-1.5 mb-1">
+                      <span className="inline-flex items-center gap-1 rounded bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500 font-medium">
+                        <Hash size={10} /> {roomId}
+                      </span>
+                      {roomAssignees.map((a: any) => (
+                        <span key={a.id}
+                          className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
+                          {a.company_staff.real_name}
+                          <button onClick={() => removeByIdMutation.mutate({ id: a.id })}
+                            className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-200/60" title="제거">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+
+                  {/* 담당자 추가 UI */}
+                  {isAdding && (
+                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/30 p-3">
+                      <p className="text-xs font-medium text-zinc-600 mb-2">담당자 선택 (복수 선택 가능)</p>
+                      <div className="flex flex-wrap gap-1.5 mb-3 max-h-40 overflow-y-auto">
+                        {staffList?.map((s) => {
+                          const selected = selectedStaffIds.includes(s.id);
+                          const alreadyAssigned = catAssignees.some(
+                            (a: any) => a.staff_id === s.id && !a.room_id && !addRoomId.trim()
+                          );
+                          return (
+                            <button key={s.id}
+                              onClick={() => !alreadyAssigned && toggleStaff(s.id)}
+                              disabled={alreadyAssigned}
+                              className={cn(
+                                'rounded-lg border px-3 py-1.5 text-xs transition-all',
+                                selected
+                                  ? 'border-blue-400 bg-blue-100 text-blue-700 font-medium'
+                                  : alreadyAssigned
+                                    ? 'border-zinc-100 bg-zinc-50 text-zinc-300 cursor-not-allowed'
+                                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-blue-300 hover:bg-blue-50'
+                              )}>
+                              {selected && <Check size={11} className="inline mr-1" />}
+                              {s.real_name}
+                              {s.department && <span className="text-zinc-400 ml-1">({s.department})</span>}
+                              {alreadyAssigned && <span className="ml-1 text-zinc-300">배정됨</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input type="text" value={addRoomId}
+                          onChange={(e) => setAddRoomId(e.currentTarget.value)}
+                          placeholder="톡방 ID (비우면 전체 적용)"
+                          className="flex-1 text-xs h-8"
+                        />
+                        <Button size="sm" onClick={() => handleAddAssignees(category)}
+                          disabled={selectedStaffIds.length === 0 || addMutation.isPending}>
+                          <Plus size={14} /> {selectedStaffIds.length}명 추가
+                        </Button>
+                        <Button size="sm" variant="secondary"
+                          onClick={() => { setAddingCategory(null); setSelectedStaffIds([]); setAddRoomId(''); }}>
+                          취소
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* 카테고리 추가 */}
           <Card className="p-4">
             <p className="text-sm font-medium text-zinc-700 mb-3">카테고리 추가</p>
             <div className="flex gap-2">
@@ -245,9 +320,9 @@ export default function AssigneesPage() {
         </>
       )}
 
-      {(setMutation.error || saveCategoriesMutation.error) && (
+      {(addMutation.error || saveCategoriesMutation.error) && (
         <p className="mt-3 text-sm text-red-600">
-          {setMutation.error?.message || saveCategoriesMutation.error?.message}
+          {addMutation.error?.message || saveCategoriesMutation.error?.message}
         </p>
       )}
     </div>

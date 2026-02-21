@@ -26,20 +26,39 @@ const assigneesRouter = router({
     return escalationRepo.getAssignees();
   }),
 
+  add: protectedProcedure
+    .input(z.object({
+      category: z.string().min(1),
+      staffId: z.number(),
+      roomId: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await escalationRepo.addAssignee(input.category, input.staffId, input.roomId);
+      return { success: true, data: result };
+    }),
+
+  // 하위호환: set → add 로 redirect
   set: protectedProcedure
     .input(z.object({
       category: z.string().min(1),
       staffId: z.number(),
     }))
     .mutation(async ({ input }) => {
-      const result = await escalationRepo.setAssignee(input.category, input.staffId);
+      const result = await escalationRepo.addAssignee(input.category, input.staffId);
       return { success: true, data: result };
+    }),
+
+  removeById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await escalationRepo.removeAssigneeById(input.id);
+      return { success: true };
     }),
 
   remove: protectedProcedure
     .input(z.object({ category: z.string() }))
     .mutation(async ({ input }) => {
-      await escalationRepo.removeAssignee(input.category);
+      await escalationRepo.removeAssigneesByCategory(input.category);
       return { success: true };
     }),
 });
