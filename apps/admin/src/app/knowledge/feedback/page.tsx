@@ -27,8 +27,16 @@ const STATUS_BADGE: Record<string, { variant: any; label: string }> = {
   dismissed: { variant: 'default', label: '무시' },
 };
 
+const TYPE_TABS = [
+  { value: undefined, label: '전체' },
+  { value: 'low_confidence' as const, label: '일반' },
+  { value: 'photo' as const, label: '사진' },
+  { value: 'video' as const, label: '영상' },
+];
+
 export default function EscalationPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [offset, setOffset] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [answerText, setAnswerText] = useState('');
@@ -37,7 +45,7 @@ export default function EscalationPage() {
   const limit = 20;
 
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.escalation.list.useQuery({ status: statusFilter as any, offset, limit });
+  const { data, isLoading } = trpc.escalation.list.useQuery({ status: statusFilter as any, escalationType: typeFilter, offset, limit });
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
 
   const answerMutation = trpc.escalation.answer.useMutation({
@@ -116,7 +124,7 @@ export default function EscalationPage() {
       )}
 
       {/* 상태 탭 */}
-      <div className="flex gap-1 mb-5 border-b border-zinc-200">
+      <div className="flex gap-1 mb-3 border-b border-zinc-200">
         {STATUS_TABS.map((tab) => (
           <button key={tab.label} onClick={() => { setStatusFilter(tab.value); setOffset(0); }}
             className={`px-3 py-2.5 text-sm border-b-2 transition-colors -mb-px ${
@@ -124,6 +132,22 @@ export default function EscalationPage() {
                 ? 'border-blue-600 text-blue-600 font-medium'
                 : 'border-transparent text-zinc-500 hover:text-zinc-700'
             }`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 유형 필터 */}
+      <div className="flex gap-1.5 mb-5">
+        {TYPE_TABS.map((tab) => (
+          <button key={tab.label} onClick={() => { setTypeFilter(tab.value); setOffset(0); }}
+            className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+              typeFilter === tab.value
+                ? 'bg-zinc-900 text-white border-zinc-900'
+                : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300'
+            }`}>
+            {tab.value === 'photo' && <Camera size={12} className="inline mr-1 -mt-0.5" />}
+            {tab.value === 'video' && <Video size={12} className="inline mr-1 -mt-0.5" />}
             {tab.label}
           </button>
         ))}

@@ -24,7 +24,7 @@ export class EscalationRepository {
     return queryOne('SELECT * FROM escalations WHERE id = $1', [id]);
   }
 
-  async list(options?: { status?: string; category?: string; assignedTo?: number; offset?: number; limit?: number }) {
+  async list(options?: { status?: string; category?: string; assignedTo?: number; escalationType?: string; offset?: number; limit?: number }) {
     const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -42,6 +42,11 @@ export class EscalationRepository {
     if (options?.assignedTo) {
       conditions.push(`assigned_to = $${idx}`);
       values.push(options.assignedTo);
+      idx++;
+    }
+    if (options?.escalationType) {
+      conditions.push(`escalation_type = $${idx}`);
+      values.push(options.escalationType);
       idx++;
     }
 

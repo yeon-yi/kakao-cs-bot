@@ -53,7 +53,7 @@ export const conversationsRouter = router({
     }))
     .query(async ({ input }) => {
       const rows = await query(
-        `SELECT id, room_id, user_name, user_message, bot_response, confidence, was_helpful, response_time_ms, created_at
+        `SELECT id, room_id, user_name, user_message, bot_response, confidence, was_helpful, response_time_ms, message_type, chain_steps, ai_model, created_at
          FROM conversations
          WHERE room_id = $1
          ORDER BY created_at ASC
@@ -68,6 +68,7 @@ export const conversationsRouter = router({
           role: 'user',
           content: row.user_message,
           user_name: row.user_name,
+          message_type: row.message_type || 'text',
           created_at: row.created_at,
         });
         if (row.bot_response) {
@@ -77,6 +78,8 @@ export const conversationsRouter = router({
             content: row.bot_response,
             confidence: row.confidence,
             response_time_ms: row.response_time_ms,
+            ai_model: row.ai_model,
+            chain_steps: row.chain_steps,
             created_at: row.created_at,
           });
         }

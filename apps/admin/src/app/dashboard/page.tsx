@@ -5,7 +5,7 @@ import { Card, CardTitle, CardValue } from '@/components/ui/card';
 import {
   Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target,
   MessageSquare, Users, BookOpen, Zap, BarChart3, MessagesSquare,
-  Brain, CheckCircle2, TrendingDown,
+  Brain, CheckCircle2, TrendingDown, Link2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +25,7 @@ const iconMap = {
   brain: Brain,
   check: CheckCircle2,
   trending: TrendingDown,
+  chain: Link2,
 };
 
 interface StatCardProps {
@@ -80,6 +81,9 @@ export default function DashboardPage() {
   });
   const { data: uncertaintyCount } = trpc.uncertainty.openCount.useQuery(undefined, {
     refetchInterval: 60_000,
+  });
+  const { data: chainStats } = trpc.analytics.chainStats.useQuery(undefined, {
+    refetchInterval: 300_000,
   });
 
   if (isLoading) {
@@ -198,6 +202,46 @@ export default function DashboardPage() {
           sub={`${learning?.verification?.verified ?? 0}/${learning?.verification?.total ?? 0} 검증됨`}
         />
       </div>
+
+      {/* AI 체인 현황 */}
+      {chainStats && chainStats.totalResponses > 0 && (
+        <>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-zinc-800">AI 체인 현황</h2>
+            <p className="text-xs text-zinc-400">최근 7일 멀티모델 체인 사용 통계</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+            <StatCard
+              title="체인 사용률"
+              value={`${(chainStats.chainRate * 100).toFixed(0)}%`}
+              icon="chain"
+              color="indigo"
+              sub={`${chainStats.chainCount}/${chainStats.totalResponses}건`}
+            />
+            <StatCard
+              title="주 모델"
+              value={chainStats.models?.[0]?.model || '-'}
+              icon="brain"
+              color="violet"
+              sub={chainStats.models?.[0] ? `${chainStats.models[0].count}회 사용` : ''}
+            />
+            <StatCard
+              title="체인 응답시간"
+              value={chainStats.avgChainTime}
+              unit="ms"
+              icon="speed"
+              color="cyan"
+            />
+            <StatCard
+              title="체인 비용 (7일)"
+              value={`$${chainStats.totalChainCost.toFixed(4)}`}
+              icon="cost"
+              color="pink"
+            />
+          </div>
+        </>
+      )}
 
       {/* 30일 요약 */}
       <div className="mb-4">

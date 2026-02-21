@@ -208,6 +208,77 @@ export const analyticsRouter = router({
       };
     }),
 
+  // 체인 통계 (7일)
+  chainStats: protectedProcedure
+    .query(async () => {
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+      // 체인 모드별 사용 횟수
+      const modeStats = await dbQuery(
+        `SELECT
+           CASE
+             WHEN chain_steps IS NULL THEN 'single'
+             WHEN jsonb_array_length(chain_steps) = 2 THEN '2-chain'
+             WHEN jsonb_array_length(chain_steps) >= 3 THEN '3-chain'
+             ELSE 'single'
+           END as chain_mode,
+           COUNT(*) as cnt
+         FROM conversations
+         WHERE created_at >= $1 AND bot_response IS NOT NULL
+         GROUP BY chain_mode`,
+        [weekAgo]
+      );
+
+      // 모델별 사용 횟수 + 평균 응답시간
+      const modelStats = await dbQuery(
+        `SELECT ai_model, COUNT(*) as cnt, AVG(response_time_ms) as avg_time
+         FROM conversations
+         WHERE created_at >= $1 AND ai_model IS NOT NULL
+         GROUP BY ai_model
+         ORDER BY cnt DESC`,
+        [weekAgo]
+      );
+
+      // 총 체인 비용
+      const costResult = await dbQueryOne(
+        `SELECT COALESCE(SUM((step->>'cost')::numeric), 0) as total_cost
+         FROM conversations,
+              jsonb_array_elements(chain_steps) as step
+         WHERE created_at >= $1 AND chain_steps IS NOT NULL`,
+        [weekAgo]
+      );
+
+      // 체인 평균 응답시간
+      const chainAvgTime = await dbQueryOne(
+        `SELECT AVG(response_time_ms) as avg_time
+         FROM conversations
+         WHERE created_at >= $1 AND chain_steps IS NOT NULL AND bot_response IS NOT NULL`,
+        [weekAgo]
+      );
+
+      const modes = modeStats.reduce((acc: any, m: any) => {
+        acc[m.chain_mode] = Number(m.cnt);
+        return acc;
+      }, {} as Record<string, number>);
+
+      const totalResponses = Object.values(modes).reduce((a: number, b: any) => a + Number(b), 0);
+      const chainCount = (modes['2-chain'] || 0) + (modes['3-chain'] || 0);
+
+      return {
+        modes,
+        totalResponses,
+        chainCount,
+        chainRate: totalResponses > 0 ? chainCount / totalResponses : 0,
+        models: modelStats.map((m: any) => ({
+          model: m.ai_model,
+          count: Number(m.cnt),
+          avgTime: Math.round(Number(m.avg_time ?? 0)),
+        })),
+        totalChainCost: Number(costResult?.total_cost ?? 0),
+        avgChainTime: Math.round(Number(chainAvgTime?.avg_time ?? 0)),
+      };
+    }),
+
   // 카테고리별 커버리지
   coverageGaps: protectedProcedure
     .query(async () => {

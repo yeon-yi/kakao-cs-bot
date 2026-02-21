@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input, Select } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { MessagesSquare, ChevronLeft, Clock, User } from 'lucide-react';
+import { MessagesSquare, ChevronLeft, Clock, User, Camera, Video, Sparkles } from 'lucide-react';
 
 export default function ConversationsPage() {
   const [search, setSearch] = useState('');
@@ -59,11 +59,41 @@ export default function ConversationsPage() {
                         ? 'bg-zinc-100 text-zinc-800'
                         : 'bg-blue-600 text-white'
                     }`}>
+                      {/* 사진/영상 메시지 아이콘 */}
+                      {!isBot && msg.message_type === 'image' && (
+                        <span className="inline-flex items-center gap-1 text-blue-200 text-xs mb-1">
+                          <Camera size={12} /> 사진
+                        </span>
+                      )}
+                      {!isBot && msg.message_type === 'video' && (
+                        <span className="inline-flex items-center gap-1 text-blue-200 text-xs mb-1">
+                          <Video size={12} /> 영상
+                        </span>
+                      )}
                       <p className="whitespace-pre-wrap break-words">{msg.content || msg.message}</p>
                       <p className={`text-[10px] mt-1 ${isBot ? 'text-zinc-400' : 'text-blue-200'}`}>
                         {new Date(msg.created_at).toLocaleString('ko-KR')}
                         {msg.user_name && !isBot && ` - ${msg.user_name}`}
                       </p>
+                      {/* 봇 메시지: 체인 정보 */}
+                      {isBot && (msg.ai_model || msg.chain_steps) && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pt-1.5 border-t border-zinc-200/50">
+                          {msg.ai_model && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-200/70 text-[10px] text-zinc-500 font-mono">
+                              {msg.ai_model}
+                            </span>
+                          )}
+                          {msg.chain_steps && Array.isArray(msg.chain_steps) && msg.chain_steps.length > 1 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-violet-500">
+                              <Sparkles size={10} />
+                              {msg.chain_steps.map((s: any) => s.model?.split('/').pop()?.split('-')[0] || s.role).join(' → ')}
+                            </span>
+                          )}
+                          {msg.response_time_ms && (
+                            <span className="text-[10px] text-zinc-400">{msg.response_time_ms}ms</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

@@ -68,6 +68,7 @@ export const escalationRouter = router({
     .input(z.object({
       status: statusEnum.optional(),
       category: z.string().optional(),
+      escalationType: z.string().optional(),
       offset: z.number().default(0),
       limit: z.number().min(1).max(100).default(20),
     }))
