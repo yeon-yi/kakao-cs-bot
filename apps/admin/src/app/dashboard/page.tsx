@@ -1,8 +1,11 @@
 'use client';
 
 import { trpc } from '@/lib/trpc';
-import { Card, CardTitle, CardValue, CardDescription } from '@/components/ui/card';
-import { Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target } from 'lucide-react';
+import { Card, CardTitle, CardValue } from '@/components/ui/card';
+import {
+  Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target,
+  MessageSquare, Users, BookOpen, Zap, BarChart3, MessagesSquare,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const iconMap = {
@@ -12,6 +15,12 @@ const iconMap = {
   cost: DollarSign,
   pending: Clock,
   accuracy: Target,
+  chat: MessageSquare,
+  users: Users,
+  knowledge: BookOpen,
+  speed: Zap,
+  chart: BarChart3,
+  rooms: MessagesSquare,
 };
 
 interface StatCardProps {
@@ -21,9 +30,10 @@ interface StatCardProps {
   icon: keyof typeof iconMap;
   alert?: boolean;
   color?: string;
+  sub?: string;
 }
 
-function StatCard({ title, value, unit, icon, alert, color = 'blue' }: StatCardProps) {
+function StatCard({ title, value, unit, icon, alert, color = 'blue', sub }: StatCardProps) {
   const Icon = iconMap[icon];
   const colorMap: Record<string, string> = {
     blue: 'bg-blue-50 text-blue-600',
@@ -32,6 +42,8 @@ function StatCard({ title, value, unit, icon, alert, color = 'blue' }: StatCardP
     red: 'bg-red-50 text-red-600',
     violet: 'bg-violet-50 text-violet-600',
     cyan: 'bg-cyan-50 text-cyan-600',
+    indigo: 'bg-indigo-50 text-indigo-600',
+    pink: 'bg-pink-50 text-pink-600',
   };
 
   return (
@@ -43,6 +55,7 @@ function StatCard({ title, value, unit, icon, alert, color = 'blue' }: StatCardP
             {typeof value === 'number' ? value.toLocaleString() : value}
             {unit && <span className="ml-1 text-sm font-normal text-zinc-400">{unit}</span>}
           </CardValue>
+          {sub && <p className="mt-1 text-xs text-zinc-400">{sub}</p>}
         </div>
         <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', colorMap[color])}>
           <Icon size={18} />
@@ -55,6 +68,9 @@ function StatCard({ title, value, unit, icon, alert, color = 'blue' }: StatCardP
 export default function DashboardPage() {
   const { data: summary, isLoading } = trpc.analytics.summary.useQuery();
   const { data: pendingData } = trpc.escalation.pendingCount.useQuery();
+  const { data: today } = trpc.analytics.today.useQuery(undefined, {
+    refetchInterval: 60_000,
+  });
 
   if (isLoading) {
     return (
@@ -66,14 +82,80 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* 오늘 실시간 */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-zinc-900">대시보드</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {summary?.period?.start} ~ {summary?.period?.end} 기간 요약
+        <p className="mt-1 text-sm text-zinc-500">실시간 현황 (1분마다 갱신)</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 mb-8">
+        <StatCard
+          title="오늘 메시지"
+          value={today?.totalMessages ?? 0}
+          unit="건"
+          icon="chat"
+          color="blue"
+          sub={`자동응답 ${today?.autoResponses ?? 0}건`}
+        />
+        <StatCard
+          title="활성 채팅방"
+          value={today?.activeRooms ?? 0}
+          unit="개"
+          icon="rooms"
+          color="indigo"
+        />
+        <StatCard
+          title="오늘 사용자"
+          value={today?.uniqueUsers ?? 0}
+          unit="명"
+          icon="users"
+          color="green"
+        />
+        <StatCard
+          title="평균 응답시간"
+          value={today?.avgResponseTime ?? 0}
+          unit="ms"
+          icon="speed"
+          color="cyan"
+        />
+        <StatCard
+          title="대기중 에스컬레이션"
+          value={pendingData?.count ?? 0}
+          unit="건"
+          icon="pending"
+          color="red"
+          alert={(pendingData?.count ?? 0) > 0}
+        />
+        <StatCard
+          title="평균 신뢰도"
+          value={`${((today?.avgConfidence ?? 0) * 100).toFixed(0)}%`}
+          icon="accuracy"
+          color="amber"
+        />
+        <StatCard
+          title="지식 항목"
+          value={today?.knowledgeCount ?? 0}
+          unit="개"
+          icon="knowledge"
+          color="violet"
+        />
+        <StatCard
+          title="AI 비용 (30일)"
+          value={`$${(summary?.totalCost ?? 0).toFixed(2)}`}
+          icon="cost"
+          color="pink"
+        />
+      </div>
+
+      {/* 30일 요약 */}
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-zinc-800">30일 요약</h2>
+        <p className="text-xs text-zinc-400">
+          {summary?.period?.start} ~ {summary?.period?.end}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
         <StatCard
           title="총 메시지"
           value={summary?.totalMessages ?? 0}
@@ -95,26 +177,43 @@ export default function DashboardPage() {
           alert={(summary?.escalationRate ?? 0) > 0.1}
         />
         <StatCard
-          title="AI 비용"
-          value={`$${(summary?.totalCost ?? 0).toFixed(2)}`}
-          icon="cost"
-          color="violet"
-        />
-        <StatCard
-          title="대기중 에스컬레이션"
-          value={pendingData?.count ?? 0}
-          unit="건"
-          icon="pending"
-          color="red"
-          alert={(pendingData?.count ?? 0) > 0}
-        />
-        <StatCard
           title="응답 정확도"
           value={`${((summary?.accuracy ?? 0) * 100).toFixed(1)}%`}
           icon="accuracy"
           color="cyan"
         />
       </div>
+
+      {/* 최근 대화 */}
+      {today?.recentRooms && today.recentRooms.length > 0 && (
+        <>
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-zinc-800">최근 대화</h2>
+          </div>
+          <Card>
+            <div className="divide-y divide-zinc-100">
+              {today.recentRooms.map((r: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-800 truncate">{r.room_id}</span>
+                      {r.user_name && (
+                        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
+                          {r.user_name}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-zinc-400 truncate">{r.user_message}</p>
+                  </div>
+                  <span className="ml-3 shrink-0 text-[10px] text-zinc-300">
+                    {new Date(r.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

@@ -53,4 +53,49 @@ export const analyticsRouter = router({
           ? totals.helpful / (totals.helpful + totals.notHelpful) : 0,
       };
     }),
+
+  today: protectedProcedure
+    .query(async () => {
+      const { query: dbQuery, queryOne: dbQueryOne } = await import('@kakao-cs-bot/database');
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const stats = await dbQueryOne(
+        `SELECT
+           COUNT(*) as total_messages,
+           COUNT(CASE WHEN bot_response IS NOT NULL THEN 1 END) as auto_responses,
+           COUNT(DISTINCT room_id) as active_rooms,
+           COUNT(DISTINCT user_name) as unique_users,
+           AVG(response_time_ms) as avg_response_time,
+           AVG(confidence) as avg_confidence
+         FROM conversations
+         WHERE created_at >= $1`,
+        [todayStart.toISOString()]
+      );
+
+      const recentRooms = await dbQuery(
+        `SELECT room_id, user_name, user_message, created_at
+         FROM conversations
+         WHERE created_at >= $1
+         ORDER BY created_at DESC
+         LIMIT 5`,
+        [todayStart.toISOString()]
+      );
+
+      const knowledgeCount = await dbQueryOne(
+        'SELECT COUNT(*) as cnt FROM knowledge_items WHERE is_active = true',
+        []
+      );
+
+      return {
+        totalMessages: Number(stats?.total_messages ?? 0),
+        autoResponses: Number(stats?.auto_responses ?? 0),
+        activeRooms: Number(stats?.active_rooms ?? 0),
+        uniqueUsers: Number(stats?.unique_users ?? 0),
+        avgResponseTime: Math.round(Number(stats?.avg_response_time ?? 0)),
+        avgConfidence: Number(stats?.avg_confidence ?? 0),
+        recentRooms,
+        knowledgeCount: Number(knowledgeCount?.cnt ?? 0),
+      };
+    }),
 });

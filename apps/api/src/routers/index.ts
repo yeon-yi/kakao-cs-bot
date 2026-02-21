@@ -11,6 +11,7 @@ import { settingsRouter } from './settings';
 import { escalationRouter } from './escalation';
 import { proactiveRouter } from './proactive';
 import { staffRouter } from './staff';
+import { conversationsRouter } from './conversations';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   escalation: escalationRouter,
   proactive: proactiveRouter,
   staff: staffRouter,
+  conversations: conversationsRouter,
 });
 
 export type AppRouter = typeof appRouter;
