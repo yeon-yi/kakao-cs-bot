@@ -23,6 +23,21 @@ app.use('*', cors({
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/ready', (c) => c.json({ status: 'ready' }));
 
+// APK 다운로드 (인증 불필요)
+app.get('/download/apk', async (c) => {
+  const fs = await import('fs');
+  const apkPath = '/app/public/csbot.apk';
+  if (!fs.existsSync(apkPath)) {
+    return c.json({ error: 'APK not found' }, 404);
+  }
+  const stat = fs.statSync(apkPath);
+  const stream = fs.createReadStream(apkPath);
+  c.header('Content-Type', 'application/vnd.android.package-archive');
+  c.header('Content-Disposition', 'attachment; filename="csbot.apk"');
+  c.header('Content-Length', String(stat.size));
+  return c.body(stream as any);
+});
+
 // Webhook (봇 앱 → API, tRPC 외부)
 app.route('/webhook', webhookApp);
 
