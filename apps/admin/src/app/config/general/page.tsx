@@ -46,8 +46,7 @@ export default function SettingsPage() {
 
   function getCurrentValue(key: string): string {
     if (editValues[key] !== undefined) return editValues[key];
-    if (values?.[key]) return values[key].value;
-    return '';
+    return values?.[key]?.value ?? '';
   }
 
   function isMasked(key: string): boolean {
