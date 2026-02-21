@@ -208,6 +208,125 @@ export const analyticsRouter = router({
       };
     }),
 
+  // AI 비용 상세 (일별 + 모델별 breakdown)
+  costBreakdown: protectedProcedure
+    .input(z.object({
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ input }) => {
+      // 1. 일별 모델별 비용 (chain_steps JSONB에서 추출)
+      const dailyByModel = await dbQuery(
+        `SELECT
+           d.date,
+           d.model,
+           d.provider,
+           SUM(d.cost) as total_cost,
+           SUM(d.input_tokens) as total_input_tokens,
+           SUM(d.output_tokens) as total_output_tokens,
+           COUNT(*) as call_count
+         FROM (
+           SELECT
+             DATE(c.created_at) as date,
+             step->>'model' as model,
+             step->>'provider' as provider,
+             COALESCE((step->>'cost')::numeric, 0) as cost,
+             COALESCE((step->>'inputTokens')::int, 0) as input_tokens,
+             COALESCE((step->>'outputTokens')::int, 0) as output_tokens
+           FROM conversations c,
+                jsonb_array_elements(c.chain_steps) as step
+           WHERE c.created_at >= $1::date
+             AND c.created_at < ($2::date + INTERVAL '1 day')
+             AND c.chain_steps IS NOT NULL
+         ) d
+         GROUP BY d.date, d.model, d.provider
+         ORDER BY d.date DESC, total_cost DESC`,
+        [input.startDate, input.endDate]
+      );
+
+      // 2. chain_steps 없는 단일 모델 대화 비용 (ai_model 기준)
+      const dailySingle = await dbQuery(
+        `SELECT
+           DATE(created_at) as date,
+           ai_model as model,
+           'openai' as provider,
+           COUNT(*) as call_count,
+           AVG(response_time_ms) as avg_time
+         FROM conversations
+         WHERE created_at >= $1::date
+           AND created_at < ($2::date + INTERVAL '1 day')
+           AND chain_steps IS NULL
+           AND ai_model IS NOT NULL
+           AND bot_response IS NOT NULL
+         GROUP BY DATE(created_at), ai_model
+         ORDER BY date DESC`,
+        [input.startDate, input.endDate]
+      );
+
+      // 3. 모델별 전체 합산
+      const modelTotals = await dbQuery(
+        `SELECT
+           d.model,
+           d.provider,
+           SUM(d.cost) as total_cost,
+           SUM(d.input_tokens) as total_input_tokens,
+           SUM(d.output_tokens) as total_output_tokens,
+           COUNT(*) as call_count
+         FROM (
+           SELECT
+             step->>'model' as model,
+             step->>'provider' as provider,
+             COALESCE((step->>'cost')::numeric, 0) as cost,
+             COALESCE((step->>'inputTokens')::int, 0) as input_tokens,
+             COALESCE((step->>'outputTokens')::int, 0) as output_tokens
+           FROM conversations c,
+                jsonb_array_elements(c.chain_steps) as step
+           WHERE c.created_at >= $1::date
+             AND c.created_at < ($2::date + INTERVAL '1 day')
+             AND c.chain_steps IS NOT NULL
+         ) d
+         GROUP BY d.model, d.provider
+         ORDER BY total_cost DESC`,
+        [input.startDate, input.endDate]
+      );
+
+      // 4. 일별 총 비용 합계
+      const dailyTotals = await dbQuery(
+        `SELECT
+           DATE(c.created_at) as date,
+           COALESCE(SUM((step->>'cost')::numeric), 0) as total_cost,
+           COUNT(DISTINCT c.id) as conversation_count
+         FROM conversations c,
+              jsonb_array_elements(c.chain_steps) as step
+         WHERE c.created_at >= $1::date
+           AND c.created_at < ($2::date + INTERVAL '1 day')
+           AND c.chain_steps IS NOT NULL
+         GROUP BY DATE(c.created_at)
+         ORDER BY date DESC`,
+        [input.startDate, input.endDate]
+      );
+
+      return {
+        dailyByModel: dailyByModel.map((r: any) => ({
+          date: r.date, model: r.model, provider: r.provider,
+          cost: Number(r.total_cost), inputTokens: Number(r.total_input_tokens),
+          outputTokens: Number(r.total_output_tokens), calls: Number(r.call_count),
+        })),
+        dailySingle: dailySingle.map((r: any) => ({
+          date: r.date, model: r.model, provider: r.provider,
+          calls: Number(r.call_count), avgTime: Math.round(Number(r.avg_time ?? 0)),
+        })),
+        modelTotals: modelTotals.map((r: any) => ({
+          model: r.model, provider: r.provider,
+          cost: Number(r.total_cost), inputTokens: Number(r.total_input_tokens),
+          outputTokens: Number(r.total_output_tokens), calls: Number(r.call_count),
+        })),
+        dailyTotals: dailyTotals.map((r: any) => ({
+          date: r.date, cost: Number(r.total_cost), conversations: Number(r.conversation_count),
+        })),
+      };
+    }),
+
   // 체인 통계 (7일)
   chainStats: protectedProcedure
     .query(async () => {
