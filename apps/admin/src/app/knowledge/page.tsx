@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input, Textarea, Select } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { PlusCircle, Pencil, Trash2, X, Check } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, X, Check, CheckCircle2, ShieldAlert } from 'lucide-react';
 
 const CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
@@ -65,6 +65,15 @@ const KnowledgeItem = memo(function KnowledgeItem({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={tier.variant}>{tier.label}</Badge>
             {item.category && <Badge variant="outline">{item.category}</Badge>}
+            {item.verification_status === 'verified' && (
+              <Badge variant="success" className="text-[10px]"><CheckCircle2 size={10} className="mr-0.5" />검증됨</Badge>
+            )}
+            {item.verification_status === 'needs_correction' && (
+              <Badge variant="destructive" className="text-[10px]"><ShieldAlert size={10} className="mr-0.5" />수정필요</Badge>
+            )}
+            {(!item.verification_status || item.verification_status === 'unverified') && (
+              <Badge variant="outline" className="text-[10px] text-zinc-400">미검증</Badge>
+            )}
           </div>
           <p className="mt-2.5 font-medium text-zinc-900">{item.question}</p>
           <p className="mt-1 text-sm leading-relaxed text-zinc-500">{item.answer}</p>
@@ -129,6 +138,10 @@ export default function KnowledgeListPage() {
   });
 
   const bulkDeleteMutation = trpc.knowledge.bulkDelete.useMutation({
+    onSuccess: () => { utils.knowledge.list.invalidate(); setSelectedIds(new Set()); },
+  });
+
+  const bulkVerifyMutation = trpc.knowledge.bulkVerify.useMutation({
     onSuccess: () => { utils.knowledge.list.invalidate(); setSelectedIds(new Set()); },
   });
 
@@ -210,8 +223,23 @@ export default function KnowledgeListPage() {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="mb-3 flex items-center gap-3 rounded-lg border border-red-100 bg-red-50/50 px-4 py-2.5">
-          <span className="text-sm font-medium text-red-700">{selectedIds.size}건 선택됨</span>
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/50 px-4 py-2.5">
+          <span className="text-sm font-medium text-zinc-700">{selectedIds.size}건 선택됨</span>
+          <Button onClick={() => {
+            if (!confirm(`선택한 ${selectedIds.size}건을 검증 완료로 표시하시겠습니까?`)) return;
+            bulkVerifyMutation.mutate({ ids: Array.from(selectedIds), status: 'verified' });
+          }} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={bulkVerifyMutation.isPending}>
+            <CheckCircle2 size={14} />
+            {bulkVerifyMutation.isPending ? '처리중...' : '일괄 검증'}
+          </Button>
+          <Button onClick={() => {
+            if (!confirm(`선택한 ${selectedIds.size}건을 미검증으로 되돌리시겠습니까?`)) return;
+            bulkVerifyMutation.mutate({ ids: Array.from(selectedIds), status: 'unverified' });
+          }} variant="outline" size="sm"
+            disabled={bulkVerifyMutation.isPending}>
+            검증 해제
+          </Button>
           <Button onClick={handleBulkDelete} variant="destructive" size="sm"
             disabled={bulkDeleteMutation.isPending}>
             <Trash2 size={14} />
@@ -220,8 +248,8 @@ export default function KnowledgeListPage() {
           <Button onClick={() => setSelectedIds(new Set())} variant="secondary" size="sm">
             선택 해제
           </Button>
-          {bulkDeleteMutation.error && (
-            <span className="text-xs text-red-600">{bulkDeleteMutation.error.message}</span>
+          {(bulkDeleteMutation.error || bulkVerifyMutation.error) && (
+            <span className="text-xs text-red-600">{(bulkDeleteMutation.error || bulkVerifyMutation.error)?.message}</span>
           )}
         </div>
       )}

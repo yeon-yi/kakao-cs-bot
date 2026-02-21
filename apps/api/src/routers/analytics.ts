@@ -30,27 +30,49 @@ export const analyticsRouter = router({
 
   summary: protectedProcedure
     .query(async () => {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
       const today = new Date().toISOString().slice(0, 10);
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const data = await analyticsRepo.getDaily(thirtyDaysAgo, today);
 
-      const totals = data.reduce((acc: any, d: any) => ({
-        messages: acc.messages + d.total_messages,
-        autoResponses: acc.autoResponses + d.auto_responses,
-        escalations: acc.escalations + d.admin_escalations,
-        cost: acc.cost + Number(d.total_ai_cost),
-        helpful: acc.helpful + d.helpful_count,
-        notHelpful: acc.notHelpful + d.not_helpful_count,
-      }), { messages: 0, autoResponses: 0, escalations: 0, cost: 0, helpful: 0, notHelpful: 0 });
+      // conversations 테이블에서 직접 집계 (analytics_daily가 비어있으므로)
+      const stats = await dbQueryOne(
+        `SELECT
+           COUNT(*) as total_messages,
+           COUNT(CASE WHEN bot_response IS NOT NULL THEN 1 END) as auto_responses,
+           COALESCE(SUM(COALESCE(
+             (SELECT SUM((step->>'cost')::numeric) FROM jsonb_array_elements(chain_steps) as step),
+             0
+           )), 0) as total_ai_cost
+         FROM conversations
+         WHERE created_at >= $1`,
+        [thirtyDaysAgo]
+      );
+
+      const escCount = await dbQueryOne(
+        `SELECT COUNT(*) as cnt FROM escalations WHERE created_at >= $1`,
+        [thirtyDaysAgo]
+      );
+
+      const feedback = await dbQueryOne(
+        `SELECT
+           COUNT(CASE WHEN status = 'learned' THEN 1 END) as helpful,
+           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as not_helpful
+         FROM escalations WHERE created_at >= $1`,
+        [thirtyDaysAgo]
+      );
+
+      const totalMessages = Number(stats?.total_messages ?? 0);
+      const autoResponses = Number(stats?.auto_responses ?? 0);
+      const escalations = Number(escCount?.cnt ?? 0);
+      const helpful = Number(feedback?.helpful ?? 0);
+      const notHelpful = Number(feedback?.not_helpful ?? 0);
 
       return {
-        period: { start: thirtyDaysAgo, end: today },
-        totalMessages: totals.messages,
-        autoResponseRate: totals.messages > 0 ? totals.autoResponses / totals.messages : 0,
-        escalationRate: totals.messages > 0 ? totals.escalations / totals.messages : 0,
-        totalCost: totals.cost,
-        accuracy: totals.helpful + totals.notHelpful > 0
-          ? totals.helpful / (totals.helpful + totals.notHelpful) : 0,
+        period: { start: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), end: today },
+        totalMessages,
+        autoResponseRate: totalMessages > 0 ? autoResponses / totalMessages : 0,
+        escalationRate: totalMessages > 0 ? escalations / totalMessages : 0,
+        totalCost: Number(stats?.total_ai_cost ?? 0),
+        accuracy: helpful + notHelpful > 0 ? helpful / (helpful + notHelpful) : 0,
       };
     }),
 

@@ -132,4 +132,22 @@ export const knowledgeRouter = router({
       logger.info('Knowledge bulk deleted', { count: input.ids.length });
       return { success: true, count: input.ids.length };
     }),
+
+  bulkVerify: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.string().uuid()).min(1).max(100),
+      status: z.enum(['verified', 'needs_correction', 'unverified']).default('verified'),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const now = new Date().toISOString();
+      for (const id of input.ids) {
+        await knowledgeRepo.update(id, {
+          verification_status: input.status,
+          verified_by: ctx.userId || 'admin',
+          verified_at: input.status === 'verified' ? now : null,
+        } as any);
+      }
+      logger.info('Knowledge bulk verified', { count: input.ids.length, status: input.status, by: ctx.userId });
+      return { success: true, count: input.ids.length };
+    }),
 });

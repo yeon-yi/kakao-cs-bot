@@ -525,6 +525,17 @@ webhookApp.post('/message', async (c) => {
         });
         responseText = response.text;
         aiModel = response.model;
+        // 단일 모델도 비용 정보 기록
+        chainStepsJson = [{
+          role: 'responder',
+          model: response.model,
+          provider: response.model.startsWith('gpt') ? 'openai'
+            : response.model.startsWith('gemini') ? 'gemini'
+            : response.model.startsWith('claude') ? 'anthropic' : 'unknown',
+          tokens: response.tokensUsed,
+          cost: response.cost,
+          latencyMs: response.latencyMs,
+        }];
       }
 
       knowledgeTier = knowledge[0]?.tier ?? null;

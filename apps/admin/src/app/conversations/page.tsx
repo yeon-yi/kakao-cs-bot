@@ -76,8 +76,17 @@ export default function ConversationsPage() {
                         {msg.user_name && !isBot && ` - ${msg.user_name}`}
                       </p>
                       {/* 봇 메시지: 체인 정보 */}
-                      {isBot && (msg.ai_model || msg.chain_steps) && (
+                      {isBot && (msg.ai_model || msg.chain_steps || msg.confidence != null) && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pt-1.5 border-t border-zinc-200/50">
+                          {msg.confidence != null && (
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              msg.confidence >= 0.7 ? 'bg-emerald-100 text-emerald-700'
+                                : msg.confidence >= 0.4 ? 'bg-amber-100 text-amber-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {(msg.confidence * 100).toFixed(0)}%
+                            </span>
+                          )}
                           {msg.ai_model && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-200/70 text-[10px] text-zinc-500 font-mono">
                               {msg.ai_model}
