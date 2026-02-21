@@ -259,6 +259,9 @@ export const webhookApp = new Hono();
 
 // API Key 검증 미들웨어
 webhookApp.use('*', async (c, next) => {
+  // APK 다운로드는 인증 불필요
+  if (c.req.path.endsWith('/download/apk')) return next();
+
   const apiKey = c.req.header('X-API-Key') || c.req.query('key');
   const secret = getEnv().WEBHOOK_SECRET;
 
