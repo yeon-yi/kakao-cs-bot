@@ -24,6 +24,11 @@ export type Database = {
           usage_count: number;
           confidence_score: number;
           is_active: boolean;
+          parent_knowledge_id: string | null;
+          verification_status: string;
+          ai_interpretation: string | null;
+          verified_by: string | null;
+          verified_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -41,6 +46,11 @@ export type Database = {
           usage_count?: number;
           confidence_score?: number;
           is_active?: boolean;
+          parent_knowledge_id?: string | null;
+          verification_status?: string;
+          ai_interpretation?: string | null;
+          verified_by?: string | null;
+          verified_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -58,6 +68,11 @@ export type Database = {
           usage_count?: number;
           confidence_score?: number;
           is_active?: boolean;
+          parent_knowledge_id?: string | null;
+          verification_status?: string;
+          ai_interpretation?: string | null;
+          verified_by?: string | null;
+          verified_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

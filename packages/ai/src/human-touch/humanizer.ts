@@ -15,6 +15,7 @@ export class Humanizer {
   private dailyEmojiCount = 0;
   private lastEmojiReset = new Date().toDateString();
   private lastEndingUsed = '';
+  private consecutiveNoEmoji = 0;
 
   // ===================== 딜레이 계산 =====================
 
@@ -61,14 +62,12 @@ export class Humanizer {
   // ===================== 톤 분석 =====================
 
   analyzeTone(message: string): CustomerTone {
-    // 비꼬기/냉소 감지 (감사+불만 동시 존재 → angry로 분류)
     const hasSarcasm = /고맙네|감사하네|덕분에.*떨어|덕분에.*줄|고마워서|:\)|잘\s*하시네|대단하시|참\s*잘/.test(message)
       || (/감사|고맙/.test(message) && /떨어지|줄었|손해|피해|매출|지켜볼|두고\s*보|가만/.test(message));
 
     if (hasSarcasm) return 'angry';
     if (/왜\s|대체|아직도|언제까지|짜증|화나|!!!|씨발|개[새씹]|어이없|어처구니|미치|열받|빡|지랄/.test(message)) return 'angry';
     if (/급해|빨리|지금\s*당장|즉시|긴급|ASAP/.test(message)) return 'urgent';
-    // 순수 감사만 (불만 키워드 없을 때)
     if (/감사|고맙|ㄱㅅ|수고/.test(message) && !/떨어|줄었|손해|피해|지켜볼|두고\s*보/.test(message)) return 'thankful';
     return 'normal';
   }
@@ -85,16 +84,17 @@ export class Humanizer {
     result = this.professionalizeEndings(result);
 
     // 3. 톤 기반 미세 조정
+    let tone: CustomerTone = 'normal';
     if (context?.customerMessage) {
-      const tone = this.analyzeTone(context.customerMessage);
+      tone = this.analyzeTone(context.customerMessage);
       result = this.adjustForTone(result, tone);
     }
 
     // 4. 문장 종결 미세 변형 (자연스러움)
     result = this.varySentenceEndings(result);
 
-    // 5. 제한적 이모지 (프로페셔널하게)
-    result = this.addProfessionalEmoji(result, context);
+    // 5. 상황별 이모지 (프로페셔널하게)
+    result = this.addProfessionalEmoji(result, context, tone);
 
     return result.trim();
   }
@@ -111,6 +111,12 @@ export class Humanizer {
 
     // "도움이 되셨으면 좋겠습니다" 등 로봇적 마무리 제거
     result = result.replace(/\s*(?:도움이 (?:되셨으면|되시길)\s*(?:좋겠습니다|바랍니다)|추가\s*(?:문의|질문)\s*(?:있으시면|사항이)\s*(?:편하게\s*)?(?:말씀해?\s*주세요|연락\s*주세요))[.!]?\s*$/i, '');
+
+    // "물론입니다", "당연하죠" 등 AI 특유의 과잉 동의 제거
+    result = result.replace(/^(?:물론입니다[.!]?\s*|당연하죠[.!]?\s*|물론이죠[.!]?\s*)/i, '');
+
+    // "~에 대해 알려드리겠습니다" 형식적 도입부 제거
+    result = result.replace(/^(?:.*에 대해\s*(?:알려|안내|설명)\s*드리겠습니다\.?\s*)/i, '');
 
     // "감사합니다" 중복 제거 (마지막에 하나만 남기기)
     const thankMatches = result.match(/감사합니다/g);
@@ -132,28 +138,16 @@ export class Humanizer {
   private professionalizeEndings(text: string): string {
     let result = text;
 
-    // ~드릴게요 → ~드리겠습니다
     result = result.replace(/드릴게요/g, '드리겠습니다');
-    // ~할게요 → ~하겠습니다
     result = result.replace(/([가-힣])할게요/g, '$1하겠습니다');
-    // ~알려드릴게요 → ~알려드리겠습니다
     result = result.replace(/알려드릴게요/g, '알려드리겠습니다');
-    // ~해드릴게요 → ~해드리겠습니다
     result = result.replace(/해드릴게요/g, '해드리겠습니다');
-    // ~주세요 는 유지 (고객 대상 요청은 자연스러움)
-    // ~인데요 → ~입니다 (문장 끝에서만, 중간 연결사로 쓰일 때는 유지)
     result = result.replace(/인데요([.!?]\s|[.!?]?$)/gm, '입니다$1');
-    // ~거든요 → ~것입니다 (문장 끝에서만)
     result = result.replace(/거든요([.!?]\s|[.!?]?$)/gm, '것입니다$1');
-    // ~있어요 → ~있습니다
     result = result.replace(/있어요/g, '있습니다');
-    // ~없어요 → ~없습니다
     result = result.replace(/없어요/g, '없습니다');
-    // ~됩니요 / ~되요 → ~됩니다
     result = result.replace(/돼요|되요/g, '됩니다');
-    // ~에요 → ~입니다 (문장 끝에서만)
     result = result.replace(/에요([.!?]?\s|[.!?]?$)/g, '입니다$1');
-    // ~세요 는 유지 (존대표현이라 자연스러움)
 
     return result;
   }
@@ -161,24 +155,31 @@ export class Humanizer {
   // 고객 톤에 맞춘 미세 조정
   private adjustForTone(text: string, tone: CustomerTone): string {
     switch (tone) {
-      case 'angry':
-        // 사과/공감 문구가 없으면 앞에 추가
+      case 'angry': {
         if (!/죄송|불편|사과/.test(text)) {
-          return '불편을 드려 죄송합니다. ' + text;
+          const apologies = [
+            '불편을 드려 죄송합니다. ',
+            '불편하셨을 텐데 죄송합니다. ',
+            '이 부분 불편하셨겠습니다. ',
+          ];
+          return apologies[Math.floor(Math.random() * apologies.length)] + text;
         }
         return text;
+      }
 
       case 'urgent':
-        // 급한 상황에는 즉각 대응 뉘앙스
         if (!/바로|즉시|빠르게|신속/.test(text)) {
-          return text.replace(/\.$/, ', 빠르게 처리하겠습니다.');
+          const urgents = [
+            ', 빠르게 처리하겠습니다.',
+            ', 바로 확인해보겠습니다.',
+            ', 신속하게 처리해드리겠습니다.',
+          ];
+          return text.replace(/\.$/, urgents[Math.floor(Math.random() * urgents.length)]);
         }
         return text;
 
       case 'thankful':
-        // 감사 인사에 짧게 응답
         if (text.length > 100) {
-          // 감사에 대한 응답이 너무 길면 자르기
           const sentences = text.split(/(?<=[.!])\s+/);
           if (sentences.length > 2) {
             return sentences.slice(0, 2).join(' ');
@@ -198,12 +199,10 @@ export class Humanizer {
 
     let prevEnding = '';
     const varied = sentences.map((s, i) => {
-      // 마지막 문장은 그대로
       if (i === sentences.length - 1) return s;
 
       const currentEnding = s.match(/(합니다|겠습니다|있습니다|됩니다|바랍니다)\./)?.[1] || '';
       if (currentEnding && currentEnding === prevEnding && Math.random() < 0.5) {
-        // 같은 종결이 연속이면 변형
         const alternates: Record<string, string[]> = {
           '합니다': ['드립니다', '사항입니다'],
           '겠습니다': ['드리겠습니다', '하겠습니다'],
@@ -224,27 +223,47 @@ export class Humanizer {
     return varied.join(' ');
   }
 
-  // 프로페셔널 이모지 (매우 제한적 - 하루 3개, 10% 확률)
-  private addProfessionalEmoji(text: string, _context?: HumanizeContext): string {
+  // 상황별 이모지 (프로페셔널 - 하루 5개, 15% 확률, 연속 사용 금지)
+  private addProfessionalEmoji(text: string, _context?: HumanizeContext, tone?: CustomerTone): string {
     const today = new Date().toDateString();
     if (today !== this.lastEmojiReset) {
       this.dailyEmojiCount = 0;
       this.lastEmojiReset = today;
+      this.consecutiveNoEmoji = 0;
     }
 
-    if (this.dailyEmojiCount >= 3) return text;
-    if (Math.random() > 0.10) return text;
+    if (this.dailyEmojiCount >= 5) return text;
 
-    // 문맥에 맞는 이모지만 추가
-    if (/안내|알려/.test(text)) {
-      this.dailyEmojiCount++;
-      return text + ' 📌';
-    }
-    if (/확인|완료/.test(text)) {
-      this.dailyEmojiCount++;
-      return text + ' ✅';
+    // 화난 고객에게는 이모지 사용 안 함
+    if (tone === 'angry') return text;
+
+    // 기본 15% 확률, 연속 미사용 시 확률 증가 (자연스러운 분포)
+    const prob = Math.min(0.15 + this.consecutiveNoEmoji * 0.05, 0.4);
+    if (Math.random() > prob) {
+      this.consecutiveNoEmoji++;
+      return text;
     }
 
+    // 문맥에 맞는 이모지 선택
+    const emojiMap: [RegExp, string[]][] = [
+      [/안내|알려|설명/, ['📌', '💡']],
+      [/확인|완료|처리/, ['✅', '👍']],
+      [/감사|고맙/, ['🙏', '😊']],
+      [/기다려|잠시/, ['🙏']],
+      [/죄송|불편/, ['🙏']],
+      [/진행|시작|준비/, ['👍']],
+    ];
+
+    for (const [pattern, emojis] of emojiMap) {
+      if (pattern.test(text)) {
+        this.dailyEmojiCount++;
+        this.consecutiveNoEmoji = 0;
+        const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        return text + ' ' + emoji;
+      }
+    }
+
+    this.consecutiveNoEmoji++;
     return text;
   }
 
@@ -261,11 +280,9 @@ export class Humanizer {
     if (sentences.length <= 2) return [{ text, delay: 0 }];
 
     // 자연스러운 분할점 찾기
-    // 패턴 1: "~입니다." 뒤에서 분할
-    // 패턴 2: "참고로" / "추가로" / "다만" 앞에서 분할
     for (let i = 1; i < sentences.length; i++) {
       const s = sentences[i];
-      if (/^(참고로|추가로|다만|그리고|아울러|또한)/.test(s)) {
+      if (/^(참고로|추가로|다만|그리고|아울러|또한|아 그리고|그런데)/.test(s)) {
         return [
           { text: sentences.slice(0, i).join(' '), delay: 0 },
           { text: sentences.slice(i).join(' '), delay: 1500 + Math.random() * 2000 },

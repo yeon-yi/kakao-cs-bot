@@ -37,6 +37,10 @@ export class KnowledgeRepository {
         input.parent_knowledge_id ?? null,
       ]
     );
+
+    // history 기록
+    this.recordHistory(row!.id, 'add', null, null, input.question, input.answer ?? null, input.taught_by || 'system');
+
     return row!;
   }
 
@@ -48,12 +52,15 @@ export class KnowledgeRepository {
   ]);
 
   async update(id: string, updates: Partial<KnowledgeInsert>): Promise<KnowledgeRow> {
+    // 변경 전 상태 조회 (history용)
+    const prev = await this.getById(id);
+
     const setClauses: string[] = [];
     const values: any[] = [];
     let idx = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-      if (!KnowledgeRepository.ALLOWED_COLUMNS.has(key)) continue; // 허용되지 않은 컬럼 무시
+      if (!KnowledgeRepository.ALLOWED_COLUMNS.has(key)) continue;
       if (key === 'embedding' && value != null) {
         setClauses.push(`${key} = $${idx}::vector`);
         values.push(`[${(value as number[]).join(',')}]`);
@@ -69,11 +76,25 @@ export class KnowledgeRepository {
       `UPDATE knowledge_base SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
       values
     );
+
+    // history 기록 (질문 또는 답변이 변경된 경우)
+    if (updates.question || updates.answer) {
+      this.recordHistory(
+        id, 'update',
+        prev?.question ?? null, prev?.answer ?? null,
+        (updates.question as string) ?? prev?.question ?? null,
+        (updates.answer as string) ?? prev?.answer ?? null,
+        'admin',
+      );
+    }
+
     return row!;
   }
 
   async delete(id: string): Promise<void> {
+    const prev = await this.getById(id);
     await query('UPDATE knowledge_base SET is_active = false WHERE id = $1', [id]);
+    this.recordHistory(id, 'delete', prev?.question ?? null, prev?.answer ?? null, null, null, 'admin');
   }
 
   async bulkDelete(ids: string[]): Promise<void> {
@@ -94,6 +115,19 @@ export class KnowledgeRepository {
       'UPDATE knowledge_base SET confidence_score = GREATEST(0.1, LEAST(1.0, confidence_score + $1)) WHERE id = $2',
       [delta, id]
     );
+  }
+
+  private recordHistory(
+    knowledgeId: string, action: string,
+    prevQ: string | null, prevA: string | null,
+    newQ: string | null, newA: string | null,
+    changedBy: string,
+  ): void {
+    query(
+      `INSERT INTO knowledge_history (knowledge_id, action, previous_question, previous_answer, new_question, new_answer, changed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [knowledgeId, action, prevQ, prevA, newQ, newA, changedBy]
+    ).catch(() => {}); // fire-and-forget
   }
 
   async list(options?: { tier?: number; category?: string; offset?: number; limit?: number }) {

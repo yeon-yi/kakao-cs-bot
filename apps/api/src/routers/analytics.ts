@@ -161,6 +161,53 @@ export const analyticsRouter = router({
       };
     }),
 
+  // 지식 건강도
+  knowledgeHealth: protectedProcedure
+    .query(async () => {
+      // 티어별 지식 수
+      const tierStats = await dbQuery(
+        `SELECT tier, COUNT(*) as cnt FROM knowledge_base WHERE is_active = true GROUP BY tier ORDER BY tier`,
+        []
+      );
+
+      // 미사용 항목 (30일간 사용 0회)
+      const unused = await dbQueryOne(
+        `SELECT COUNT(*) as cnt FROM knowledge_base
+         WHERE is_active = true AND usage_count = 0
+         AND created_at < NOW() - INTERVAL '7 days'`,
+        []
+      );
+
+      // 낮은 confidence (0.5 미만)
+      const lowConfidence = await dbQueryOne(
+        `SELECT COUNT(*) as cnt FROM knowledge_base
+         WHERE is_active = true AND confidence_score < 0.5`,
+        []
+      );
+
+      // 검증 현황
+      const verification = await dbQueryOne(
+        `SELECT
+           COUNT(*) as total,
+           COUNT(CASE WHEN verification_status = 'verified' THEN 1 END) as verified,
+           COUNT(CASE WHEN verification_status = 'needs_correction' THEN 1 END) as needs_correction
+         FROM knowledge_base WHERE is_active = true`,
+        []
+      );
+
+      return {
+        tierBreakdown: tierStats.map((t: any) => ({
+          tier: Number(t.tier),
+          count: Number(t.cnt),
+        })),
+        unusedCount: Number(unused?.cnt ?? 0),
+        lowConfidenceCount: Number(lowConfidence?.cnt ?? 0),
+        verificationRate: Number(verification?.total) > 0
+          ? Number(verification?.verified ?? 0) / Number(verification?.total) : 0,
+        needsCorrectionCount: Number(verification?.needs_correction ?? 0),
+      };
+    }),
+
   // 카테고리별 커버리지
   coverageGaps: protectedProcedure
     .query(async () => {
