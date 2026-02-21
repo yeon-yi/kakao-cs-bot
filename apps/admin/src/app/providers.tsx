@@ -11,10 +11,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [trpcClient] = useState(() => getTrpcClient());
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
         {children}
-      </QueryClientProvider>
-    </trpc.Provider>
+      </trpc.Provider>
+    </QueryClientProvider>
   );
 }

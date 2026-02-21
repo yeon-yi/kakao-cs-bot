@@ -12,7 +12,10 @@ const conversationRepo = new ConversationRepository();
 
 let redis: Redis | null = null;
 function getRedis() {
-  if (!redis) redis = new Redis(getEnv().REDIS_URL);
+  if (!redis) {
+    redis = new Redis(getEnv().REDIS_URL);
+    redis.on('error', (err) => logger.warn('Redis connection error', { error: String(err) }));
+  }
   return redis;
 }
 

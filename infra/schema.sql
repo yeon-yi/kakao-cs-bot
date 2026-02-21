@@ -767,5 +767,32 @@ CREATE INDEX IF NOT EXISTS idx_uncertainty_topic_trgm
     ON uncertainty_topics USING gin (topic gin_trgm_ops);
 
 -- ============================================================================
+-- 8. CONNECTED DEVICES (기기 모니터링)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS connected_devices (
+    id              BIGSERIAL PRIMARY KEY,
+    device_id       VARCHAR(100) NOT NULL UNIQUE,
+    device_name     VARCHAR(200),
+    device_type     VARCHAR(50) DEFAULT 'android',
+    app_version     VARCHAR(50),
+    os_version      VARCHAR(100),
+    status          VARCHAR(20) NOT NULL DEFAULT 'online'
+                    CHECK (status IN ('online', 'offline', 'error')),
+    last_heartbeat  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_error      TEXT,
+    error_count     INT NOT NULL DEFAULT 0,
+    messages_sent   INT NOT NULL DEFAULT 0,
+    messages_today  INT NOT NULL DEFAULT 0,
+    registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata        JSONB DEFAULT '{}'
+);
+
+COMMENT ON TABLE connected_devices IS '연결된 봇 기기 실시간 모니터링';
+
+CREATE INDEX IF NOT EXISTS idx_devices_status ON connected_devices(status);
+CREATE INDEX IF NOT EXISTS idx_devices_heartbeat ON connected_devices(last_heartbeat);
+
+-- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================

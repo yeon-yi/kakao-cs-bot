@@ -138,6 +138,67 @@ object ApiClient {
         } catch (_: Exception) {}
     }
 
+    // ===================== 기기 모니터링 =====================
+
+    fun registerDevice(): Boolean {
+        return try {
+            val prefs = App.prefs
+            val body = JSONObject().apply {
+                put("deviceId", prefs.deviceId)
+                put("deviceName", prefs.deviceName)
+                put("deviceType", "android")
+                put("appVersion", getAppVersion())
+                put("osVersion", "Android ${android.os.Build.VERSION.RELEASE}")
+            }
+
+            val request = Request.Builder()
+                .url("${baseUrl()}/webhook/device/register")
+                .header("Content-Type", "application/json")
+                .header("X-API-Key", apiKey())
+                .post(body.toString().toRequestBody(JSON_TYPE))
+                .build()
+
+            val response = client.newCall(request).execute()
+            response.code == 200
+        } catch (e: Exception) {
+            LogManager.e("기기 등록 실패: ${e.message}")
+            false
+        }
+    }
+
+    fun sendHeartbeat(error: String? = null): Boolean {
+        return try {
+            val prefs = App.prefs
+            val body = JSONObject().apply {
+                put("deviceId", prefs.deviceId)
+                put("messagesTotal", LogManager.totalMessages)
+                put("messagesToday", LogManager.totalResponses)
+                if (error != null) put("error", error)
+            }
+
+            val request = Request.Builder()
+                .url("${baseUrl()}/webhook/device/heartbeat")
+                .header("Content-Type", "application/json")
+                .header("X-API-Key", apiKey())
+                .post(body.toString().toRequestBody(JSON_TYPE))
+                .build()
+
+            val response = client.newCall(request).execute()
+            response.code == 200
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getAppVersion(): String {
+        return try {
+            val pInfo = App.instance.packageManager.getPackageInfo(App.instance.packageName, 0)
+            pInfo.versionName ?: "1.0"
+        } catch (_: Exception) {
+            "1.0"
+        }
+    }
+
     fun isRoomBlocked(roomId: String): Boolean {
         return try {
             val request = Request.Builder()

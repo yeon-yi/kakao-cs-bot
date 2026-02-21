@@ -9,8 +9,8 @@ const knowledgeRepo = new KnowledgeRepository();
 export const uncertaintyRouter = router({
   list: protectedProcedure
     .input(z.object({
-      status: z.string().optional(),
-      category: z.string().optional(),
+      status: z.enum(['open', 'addressed', 'dismissed']).optional(),
+      category: z.string().min(1).optional(),
       offset: z.number().default(0),
       limit: z.number().min(1).max(100).default(20),
     }))
@@ -42,6 +42,13 @@ export const uncertaintyRouter = router({
       category: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // 주제 존재/상태 사전 검증
+      const topic = await uncertaintyRepo.list({ status: 'open', offset: 0, limit: 1 });
+      // getById로 직접 확인
+      const existing = await uncertaintyRepo.getById(input.id);
+      if (!existing) throw new Error('주제를 찾을 수 없습니다');
+      if (existing.status !== 'open') throw new Error('이미 처리된 주제입니다');
+
       const embedding = await embedder.embed(input.question);
       const knowledge = await knowledgeRepo.add({
         question: input.question,

@@ -244,8 +244,8 @@ export default function DashboardPage() {
           </div>
           <Card>
             <div className="divide-y divide-zinc-100">
-              {today.recentRooms.map((r: any, i: number) => (
-                <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+              {today.recentRooms.map((r: any) => (
+                <div key={`${r.room_id}-${r.created_at}`} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-zinc-800 truncate">{r.room_id}</span>

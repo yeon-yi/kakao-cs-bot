@@ -37,6 +37,10 @@ export class UncertaintyRepository {
     return { data, total: parseInt(countResult?.count ?? '0', 10) };
   }
 
+  async getById(id: number) {
+    return queryOne('SELECT * FROM uncertainty_topics WHERE id = $1', [id]);
+  }
+
   async resolve(id: number, knowledgeId: string): Promise<void> {
     await query(
       `UPDATE uncertainty_topics SET status = 'addressed', resolved_knowledge_id = $1, resolved_at = NOW() WHERE id = $2`,

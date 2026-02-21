@@ -18,7 +18,10 @@ const configRepo = new ConfigRepository();
 // Redis for implicit feedback tracking
 let redis: Redis | null = null;
 function getRedis(): Redis {
-  if (!redis) redis = new Redis(getEnv().REDIS_URL);
+  if (!redis) {
+    redis = new Redis(getEnv().REDIS_URL);
+    redis.on('error', (err) => logger.warn('Redis connection error', { error: String(err) }));
+  }
   return redis;
 }
 
@@ -87,9 +90,8 @@ async function getSystemPrompt(knowledgeContext: string, historyContext: string)
   const now = Date.now();
   if (!cachedPrompt || now - cachedPrompt.loadedAt > PROMPT_CACHE_TTL) {
     const row = await promptRepo.get('default_answer').catch(() => null);
-    if (row?.template) {
-      cachedPrompt = { template: row.template, loadedAt: now };
-    }
+    // 항상 캐시 업데이트 (빈 결과도 캐시하여 DB 반복 조회 방지)
+    cachedPrompt = { template: row?.template ?? '', loadedAt: now };
   }
 
   if (cachedPrompt?.template) {
@@ -167,40 +169,49 @@ async function checkImplicitFeedback(roomId: string, userName: string, currentMe
     const isSarcastic = SARCASM_PATTERNS.test(currentMessage)
       || (/(감사|고맙)/.test(currentMessage) && COMPLAINT_WITH_THANKS.test(currentMessage));
 
+    let feedbackRecorded = false;
+
     if (isSarcastic) {
       await conversationRepo.markHelpful(prevConvId, false);
       if (prevKnowledgeId) {
         await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.1).catch(() => {});
       }
+      feedbackRecorded = true;
       logger.debug('Sarcastic negative feedback detected', { roomId, convId: prevConvId });
     } else if (PURE_POSITIVE_PATTERNS.test(currentMessage) && !COMPLAINT_WITH_THANKS.test(currentMessage)) {
       await conversationRepo.markHelpful(prevConvId, true);
       if (prevKnowledgeId) {
         await knowledgeRepo.adjustConfidence(prevKnowledgeId, 0.05).catch(() => {});
       }
+      feedbackRecorded = true;
       logger.debug('Implicit positive feedback', { roomId, convId: prevConvId });
     } else if (NEGATIVE_PATTERNS.test(currentMessage)) {
       await conversationRepo.markHelpful(prevConvId, false);
       if (prevKnowledgeId) {
         await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.1).catch(() => {});
       }
+      feedbackRecorded = true;
       logger.debug('Implicit negative feedback', { roomId, convId: prevConvId });
     }
 
-    // 같은 질문 반복 감지 (similarity > 0.85)
-    if (prev.embedding && currentEmbedding) {
-      const similarity = cosineSimilarity(currentEmbedding, prev.embedding);
+    // 같은 질문 반복 감지 (similarity > 0.85) - 텍스트 피드백 미감지 시에만
+    if (!feedbackRecorded && prev.embedding && currentEmbedding) {
+      const truncLen = Math.min(currentEmbedding.length, prev.embedding.length);
+      const similarity = cosineSimilarity(currentEmbedding.slice(0, truncLen), prev.embedding.slice(0, truncLen));
       if (similarity > 0.85) {
         await conversationRepo.markHelpful(prevConvId, false);
         if (prevKnowledgeId) {
           await knowledgeRepo.adjustConfidence(prevKnowledgeId, -0.15).catch(() => {});
         }
+        feedbackRecorded = true;
         logger.debug('Repeated question detected', { roomId, similarity });
       }
     }
 
-    // 처리 후 삭제
-    await redisClient.del(prevKey);
+    // 피드백이 기록된 경우에만 키 삭제 (미기록 시 다음 메시지에서 재시도)
+    if (feedbackRecorded) {
+      await redisClient.del(prevKey);
+    }
   } catch (e) {
     logger.warn('Implicit feedback check failed', { error: String(e) });
   }
@@ -233,9 +244,16 @@ function getEscalationMessage(): string {
 
 const VALID_CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
-// 방별 마지막 응답 시간 (rate limiting)
+// 방별 마지막 응답 시간 (rate limiting, 자동 정리)
 const lastResponseMap = new Map<string, number>();
 const MIN_INTERVAL_MS = 3000;
+const RATE_MAP_CLEANUP_INTERVAL = 600_000; // 10분마다 정리
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, time] of lastResponseMap) {
+    if (now - time > MIN_INTERVAL_MS * 100) lastResponseMap.delete(key);
+  }
+}, RATE_MAP_CLEANUP_INTERVAL);
 
 export const webhookApp = new Hono();
 
@@ -508,6 +526,67 @@ webhookApp.get('/status', async (c) => {
     operatingHours: humanizer.isOperatingHours(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ===================== 기기 모니터링 엔드포인트 =====================
+
+// 기기 등록/업데이트
+webhookApp.post('/device/register', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { deviceId, deviceName, deviceType, appVersion, osVersion } = body;
+    if (!deviceId) return c.json({ error: 'deviceId required' }, 400);
+
+    await dbQuery(
+      `INSERT INTO connected_devices (device_id, device_name, device_type, app_version, os_version, status, last_heartbeat)
+       VALUES ($1, $2, $3, $4, $5, 'online', NOW())
+       ON CONFLICT (device_id) DO UPDATE SET
+         device_name = COALESCE($2, connected_devices.device_name),
+         device_type = COALESCE($3, connected_devices.device_type),
+         app_version = COALESCE($4, connected_devices.app_version),
+         os_version = COALESCE($5, connected_devices.os_version),
+         status = 'online',
+         last_heartbeat = NOW()`,
+      [deviceId, deviceName || null, deviceType || 'android', appVersion || null, osVersion || null]
+    );
+    logger.info('Device registered', { deviceId, deviceName });
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error('Device register error', { error: String(error) });
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// 하트비트
+webhookApp.post('/device/heartbeat', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { deviceId, messagesTotal, messagesToday, error: deviceError } = body;
+    if (!deviceId) return c.json({ error: 'deviceId required' }, 400);
+
+    if (deviceError) {
+      await dbQuery(
+        `UPDATE connected_devices SET
+           status = 'error', last_heartbeat = NOW(),
+           last_error = $2, error_count = error_count + 1
+         WHERE device_id = $1`,
+        [deviceId, deviceError]
+      );
+    } else {
+      await dbQuery(
+        `UPDATE connected_devices SET
+           status = 'online', last_heartbeat = NOW(),
+           messages_sent = COALESCE($2, messages_sent),
+           messages_today = COALESCE($3, messages_today),
+           last_error = NULL
+         WHERE device_id = $1`,
+        [deviceId, messagesTotal ?? null, messagesToday ?? null]
+      );
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: 'Internal server error' }, 500);
+  }
 });
 
 // ===================== 프로액티브 메시징 엔드포인트 (봇 앱용) =====================

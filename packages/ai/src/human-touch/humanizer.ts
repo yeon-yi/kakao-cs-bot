@@ -141,10 +141,10 @@ export class Humanizer {
     // ~해드릴게요 → ~해드리겠습니다
     result = result.replace(/해드릴게요/g, '해드리겠습니다');
     // ~주세요 는 유지 (고객 대상 요청은 자연스러움)
-    // ~인데요 → ~입니다
-    result = result.replace(/인데요[.?]?/g, '입니다.');
-    // ~거든요 → ~것입니다
-    result = result.replace(/거든요[.]?/g, '것입니다.');
+    // ~인데요 → ~입니다 (문장 끝에서만, 중간 연결사로 쓰일 때는 유지)
+    result = result.replace(/인데요([.!?]\s|[.!?]?$)/gm, '입니다$1');
+    // ~거든요 → ~것입니다 (문장 끝에서만)
+    result = result.replace(/거든요([.!?]\s|[.!?]?$)/gm, '것입니다$1');
     // ~있어요 → ~있습니다
     result = result.replace(/있어요/g, '있습니다');
     // ~없어요 → ~없습니다
@@ -209,6 +209,7 @@ export class Humanizer {
           '겠습니다': ['드리겠습니다', '하겠습니다'],
           '있습니다': ['있으십니다', '가능합니다'],
           '됩니다': ['가능합니다', '됩니다'],
+          '바랍니다': ['드리겠습니다', '부탁드립니다'],
         };
         const alts = alternates[currentEnding];
         if (alts) {
@@ -223,22 +224,25 @@ export class Humanizer {
     return varied.join(' ');
   }
 
-  // 프로페셔널 이모지 (매우 제한적)
-  private addProfessionalEmoji(text: string, context?: HumanizeContext): string {
+  // 프로페셔널 이모지 (매우 제한적 - 하루 3개, 10% 확률)
+  private addProfessionalEmoji(text: string, _context?: HumanizeContext): string {
     const today = new Date().toDateString();
     if (today !== this.lastEmojiReset) {
       this.dailyEmojiCount = 0;
       this.lastEmojiReset = today;
     }
 
-    // 하루 최대 3개, 20% 확률
     if (this.dailyEmojiCount >= 3) return text;
-    if (Math.random() > 0.15) return text;
+    if (Math.random() > 0.10) return text;
 
-    // 감사 메시지에만 이모지 추가
-    if (context?.isThankYou) {
+    // 문맥에 맞는 이모지만 추가
+    if (/안내|알려/.test(text)) {
       this.dailyEmojiCount++;
-      return text;  // 감사에 대한 답은 이모지 없이 프로페셔널하게
+      return text + ' 📌';
+    }
+    if (/확인|완료/.test(text)) {
+      this.dailyEmojiCount++;
+      return text + ' ✅';
     }
 
     return text;

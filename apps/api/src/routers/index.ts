@@ -13,6 +13,7 @@ import { proactiveRouter } from './proactive';
 import { staffRouter } from './staff';
 import { conversationsRouter } from './conversations';
 import { uncertaintyRouter } from './uncertainty';
+import { devicesRouter } from './devices';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   staff: staffRouter,
   conversations: conversationsRouter,
   uncertainty: uncertaintyRouter,
+  devices: devicesRouter,
 });
 
 export type AppRouter = typeof appRouter;

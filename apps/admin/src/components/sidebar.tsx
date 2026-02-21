@@ -7,7 +7,7 @@ import { trpc } from '@/lib/trpc';
 import {
   LayoutDashboard, BarChart3, BookOpen, PlusCircle, Upload, MessageSquare,
   AlertCircle, MessagesSquare, UserCheck, Bell, FileText, Users,
-  UserCog, Settings, LogOut, AlertTriangle,
+  UserCog, Settings, LogOut, AlertTriangle, Smartphone,
 } from 'lucide-react';
 
 const navSections = [
@@ -15,6 +15,7 @@ const navSections = [
     items: [
       { href: '/dashboard', label: '대시보드', icon: LayoutDashboard },
       { href: '/dashboard/analytics', label: '분석', icon: BarChart3 },
+      { href: '/dashboard/devices', label: '연결 기기', icon: Smartphone, badge: 'devices' as any },
     ],
   },
   {
@@ -57,6 +58,9 @@ export function Sidebar() {
   const { data: uncertaintyData } = trpc.uncertainty.openCount.useQuery(undefined, {
     refetchInterval: 60000,
   });
+  const { data: deviceSummary } = trpc.devices.summary.useQuery(undefined, {
+    refetchInterval: 15000,
+  });
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -88,9 +92,10 @@ export function Sidebar() {
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                 const hasBadge = 'badge' in item && item.badge === true && pendingData && pendingData.count > 0;
                 const hasUncertaintyBadge = 'badge' in item && item.badge === 'uncertainty' && uncertaintyData && uncertaintyData.count > 0;
+                const hasDeviceBadge = 'badge' in item && item.badge === 'devices' && deviceSummary;
 
                 return (
                   <Link
@@ -113,6 +118,14 @@ export function Sidebar() {
                     {hasUncertaintyBadge && (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white leading-none">
                         {uncertaintyData.count}
+                      </span>
+                    )}
+                    {hasDeviceBadge && (
+                      <span className={cn(
+                        'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white leading-none',
+                        deviceSummary.error > 0 ? 'bg-red-500' : deviceSummary.online > 0 ? 'bg-emerald-500' : 'bg-zinc-500'
+                      )}>
+                        {deviceSummary.online}/{deviceSummary.total}
                       </span>
                     )}
                   </Link>

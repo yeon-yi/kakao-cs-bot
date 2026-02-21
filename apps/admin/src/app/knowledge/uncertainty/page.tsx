@@ -34,6 +34,8 @@ export default function UncertaintyPage() {
   const { data, isLoading } = trpc.uncertainty.list.useQuery({ status: statusFilter, offset, limit });
   const { data: stats } = trpc.uncertainty.stats.useQuery();
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const resolveMutation = trpc.uncertainty.resolve.useMutation({
     onSuccess: () => {
       utils.uncertainty.list.invalidate();
@@ -42,7 +44,9 @@ export default function UncertaintyPage() {
       setAnsweringId(null);
       setAnswerText('');
       setAnswerQuestion('');
+      setErrorMsg(null);
     },
+    onError: (err) => setErrorMsg(`지식 등록 실패: ${err.message}`),
   });
 
   const dismissMutation = trpc.uncertainty.dismiss.useMutation({
@@ -50,7 +54,9 @@ export default function UncertaintyPage() {
       utils.uncertainty.list.invalidate();
       utils.uncertainty.stats.invalidate();
       utils.uncertainty.openCount.invalidate();
+      setErrorMsg(null);
     },
+    onError: (err) => setErrorMsg(`무시 처리 실패: ${err.message}`),
   });
 
   return (
@@ -80,10 +86,17 @@ export default function UncertaintyPage() {
         </div>
       )}
 
+      {errorMsg && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex justify-between items-center">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-600 ml-3">&times;</button>
+        </div>
+      )}
+
       {/* 상태 탭 */}
       <div className="flex gap-1 mb-5 border-b border-zinc-200">
         {STATUS_TABS.map((tab) => (
-          <button key={tab.value} onClick={() => { setStatusFilter(tab.value); setOffset(0); }}
+          <button key={tab.value} onClick={() => { setStatusFilter(tab.value); setOffset(0); setAnsweringId(null); setAnswerText(''); setAnswerQuestion(''); setErrorMsg(null); }}
             className={`px-3 py-2.5 text-sm border-b-2 transition-colors -mb-px ${
               statusFilter === tab.value
                 ? 'border-blue-600 text-blue-600 font-medium'

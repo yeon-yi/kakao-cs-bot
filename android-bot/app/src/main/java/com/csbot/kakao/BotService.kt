@@ -11,10 +11,12 @@ import java.util.TimerTask
 class BotService : Service() {
 
     private var proactiveTimer: Timer? = null
+    private var heartbeatTimer: Timer? = null
 
     companion object {
         var isRunning = false
             private set
+        private const val HEARTBEAT_INTERVAL_MS = 30_000L // 30초마다 하트비트
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -24,6 +26,7 @@ class BotService : Service() {
         isRunning = true
         startForegroundNotification()
         startProactivePolling()
+        startHeartbeat()
         LogManager.i("봇 서비스 시작")
     }
 
@@ -36,6 +39,8 @@ class BotService : Service() {
         isRunning = false
         proactiveTimer?.cancel()
         proactiveTimer = null
+        heartbeatTimer?.cancel()
+        heartbeatTimer = null
         LogManager.i("봇 서비스 중지")
     }
 
@@ -55,6 +60,34 @@ class BotService : Service() {
             .build()
 
         startForeground(1, notification)
+    }
+
+    private fun startHeartbeat() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = Timer("heartbeat")
+
+        // 기기 등록 (즉시)
+        heartbeatTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                try {
+                    val registered = ApiClient.registerDevice()
+                    if (registered) {
+                        LogManager.d("기기 등록 완료: ${App.prefs.deviceId}")
+                    }
+                } catch (e: Exception) {
+                    LogManager.e("기기 등록 오류: ${e.message}")
+                }
+            }
+        }, 1000)
+
+        // 주기적 하트비트 (30초마다)
+        heartbeatTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                try {
+                    ApiClient.sendHeartbeat()
+                } catch (_: Exception) {}
+            }
+        }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS)
     }
 
     private fun startProactivePolling() {

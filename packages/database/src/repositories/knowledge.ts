@@ -23,21 +23,29 @@ export class KnowledgeRepository {
     return queryOne<KnowledgeRow>('SELECT * FROM knowledge_base WHERE id = $1', [id]);
   }
 
-  async add(input: KnowledgeInsert): Promise<KnowledgeRow> {
+  async add(input: KnowledgeInsert & { parent_knowledge_id?: string }): Promise<KnowledgeRow> {
     const embeddingStr = input.embedding ? `[${input.embedding.join(',')}]` : null;
     const row = await queryOne<KnowledgeRow>(
-      `INSERT INTO knowledge_base (tier, question, answer, category, embedding, source, taught_by, tags, notes, usage_count, confidence_score, is_active)
-       VALUES ($1, $2, $3, $4, $5::vector, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO knowledge_base (tier, question, answer, category, embedding, source, taught_by, tags, notes, usage_count, confidence_score, is_active, parent_knowledge_id)
+       VALUES ($1, $2, $3, $4, $5::vector, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         input.tier, input.question, input.answer ?? null, input.category ?? null,
         embeddingStr, input.source ?? null, input.taught_by ?? null,
         input.tags ?? null, input.notes ?? null,
         input.usage_count ?? 0, input.confidence_score ?? 1.0, input.is_active ?? true,
+        input.parent_knowledge_id ?? null,
       ]
     );
     return row!;
   }
+
+  private static ALLOWED_COLUMNS = new Set([
+    'question', 'answer', 'category', 'tier', 'tags', 'notes', 'embedding',
+    'is_active', 'confidence_score', 'usage_count', 'source', 'taught_by',
+    'parent_knowledge_id', 'verification_status', 'ai_interpretation',
+    'verified_by', 'verified_at',
+  ]);
 
   async update(id: string, updates: Partial<KnowledgeInsert>): Promise<KnowledgeRow> {
     const setClauses: string[] = [];
@@ -45,6 +53,7 @@ export class KnowledgeRepository {
     let idx = 1;
 
     for (const [key, value] of Object.entries(updates)) {
+      if (!KnowledgeRepository.ALLOWED_COLUMNS.has(key)) continue; // 허용되지 않은 컬럼 무시
       if (key === 'embedding' && value != null) {
         setClauses.push(`${key} = $${idx}::vector`);
         values.push(`[${(value as number[]).join(',')}]`);

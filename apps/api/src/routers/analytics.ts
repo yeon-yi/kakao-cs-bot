@@ -56,7 +56,9 @@ export const analyticsRouter = router({
 
   today: protectedProcedure
     .query(async () => {
-      const todayStart = new Date();
+      // KST 기준 자정 (UTC+9)
+      const nowKST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const todayStart = new Date(nowKST);
       todayStart.setHours(0, 0, 0, 0);
 
       const stats = await dbQueryOne(

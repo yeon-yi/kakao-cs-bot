@@ -51,4 +51,19 @@ class Prefs(context: Context) {
     var allowedRooms: Set<String>
         get() = sp.getStringSet("allowed_rooms", emptySet()) ?: emptySet()
         set(v) = sp.edit().putStringSet("allowed_rooms", v).apply()
+
+    var deviceId: String
+        get() {
+            var id = sp.getString("device_id", null)
+            if (id == null) {
+                id = "android-${java.util.UUID.randomUUID().toString().take(8)}"
+                sp.edit().putString("device_id", id).apply()
+            }
+            return id
+        }
+        set(v) = sp.edit().putString("device_id", v).apply()
+
+    var deviceName: String
+        get() = sp.getString("device_name", android.os.Build.MODEL) ?: android.os.Build.MODEL
+        set(v) = sp.edit().putString("device_name", v).apply()
 }

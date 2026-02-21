@@ -23,14 +23,13 @@ export const promptsRouter = router({
       name: z.string(),
       template: z.string().min(1),
       reason: z.string().min(1),
-      changedBy: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const result = await promptRepo.update(
         input.name,
         input.template,
         input.reason,
-        input.changedBy || ctx.userId || 'system',
+        ctx.userId || 'system',
       );
       return { success: true, newVersion: result?.version, message: '프롬프트가 업데이트되었습니다' };
     }),
@@ -46,7 +45,7 @@ export const promptsRouter = router({
       if (!prompt) throw new Error(`Prompt not found: ${input.name}`);
 
       const history = await dbQuery(
-        `SELECT ph.*, pt.name as template_name
+        `SELECT ph.id, ph.version, ph.change_reason, ph.changed_by, ph.created_at, pt.name as template_name
          FROM prompt_history ph
          JOIN prompt_templates pt ON pt.id = ph.template_id
          WHERE pt.name = $1
