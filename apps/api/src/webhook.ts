@@ -704,6 +704,21 @@ webhookApp.get('/blocks/check', async (c) => {
   }
 });
 
+// APK 다운로드
+webhookApp.get('/download/apk', async (c) => {
+  const fs = await import('fs');
+  const apkPath = '/app/public/csbot.apk';
+  if (!fs.existsSync(apkPath)) {
+    return c.json({ error: 'APK not found' }, 404);
+  }
+  const stat = fs.statSync(apkPath);
+  const stream = fs.createReadStream(apkPath);
+  c.header('Content-Type', 'application/vnd.android.package-archive');
+  c.header('Content-Disposition', 'attachment; filename="csbot.apk"');
+  c.header('Content-Length', String(stat.size));
+  return c.body(stream as any);
+});
+
 // AI 카테고리 분류
 async function classifyCategory(message: string): Promise<string> {
   try {

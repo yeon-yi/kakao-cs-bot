@@ -9,6 +9,8 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    volumes:
+      - ./public:/app/public
     depends_on:
       - redis
     restart: unless-stopped

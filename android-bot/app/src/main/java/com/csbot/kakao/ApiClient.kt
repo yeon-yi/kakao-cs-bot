@@ -87,6 +87,7 @@ object ApiClient {
                 timestamp = data.optString("timestamp", "")
             )
         } catch (e: Exception) {
+            LogManager.e("서버 상태 확인 실패: ${e.javaClass.simpleName} - ${e.message}")
             null
         }
     }
