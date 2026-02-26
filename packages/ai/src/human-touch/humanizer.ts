@@ -7,6 +7,8 @@ interface HumanizeContext {
   isThankYou?: boolean;
   customerMessage?: string;
   hasHistory?: boolean;
+  /** 고객 격식 수준 - 'casual'이면 ~요체 유지 */
+  customerFormality?: 'formal' | 'semi-formal' | 'casual';
 }
 
 type CustomerTone = 'angry' | 'urgent' | 'normal' | 'thankful';
@@ -80,8 +82,10 @@ export class Humanizer {
     // 1. AI 특유의 패턴 제거
     result = this.removeAIPatterns(result);
 
-    // 2. 프로페셔널 문장 종결 통일 (~요 → ~습니다 체)
-    result = this.professionalizeEndings(result);
+    // 2. 프로페셔널 문장 종결 통일 (격식체일 때만 ~요 → ~습니다)
+    if (!context?.customerFormality || context.customerFormality === 'formal') {
+      result = this.professionalizeEndings(result);
+    }
 
     // 3. 톤 기반 미세 조정
     let tone: CustomerTone = 'normal';
@@ -271,31 +275,56 @@ export class Humanizer {
 
   splitIntoMessages(text: string): { text: string; delay: number }[] {
     // 짧은 메시지는 분할하지 않음
-    if (text.length < 120) return [{ text, delay: 0 }];
-
-    // 30% 확률로만 분할
-    if (Math.random() > 0.3) return [{ text, delay: 0 }];
+    if (text.length < 80) return [{ text, delay: 0 }];
 
     const sentences = text.split(/(?<=[.!?])\s+/);
-    if (sentences.length <= 2) return [{ text, delay: 0 }];
+    if (sentences.length <= 1) return [{ text, delay: 0 }];
 
-    // 자연스러운 분할점 찾기
+    // 길이에 따른 분할 확률: 짧으면 40%, 길면 70%
+    const splitProb = text.length < 150 ? 0.4 : text.length < 250 ? 0.55 : 0.7;
+    if (Math.random() > splitProb) return [{ text, delay: 0 }];
+
+    // 자연스러운 분할점 패턴 (우선순위 순)
+    const breakPatterns = /^(참고로|추가로|다만|그리고|아울러|또한|아 그리고|그런데|한편|그래서|그 외에|덧붙여|혹시|만약|다음으로|마지막으로)/;
+
+    // 분할점 후보 수집
+    const breakpoints: number[] = [];
     for (let i = 1; i < sentences.length; i++) {
-      const s = sentences[i];
-      if (/^(참고로|추가로|다만|그리고|아울러|또한|아 그리고|그런데)/.test(s)) {
-        return [
-          { text: sentences.slice(0, i).join(' '), delay: 0 },
-          { text: sentences.slice(i).join(' '), delay: 1500 + Math.random() * 2000 },
-        ];
+      if (breakPatterns.test(sentences[i])) {
+        breakpoints.push(i);
       }
     }
 
-    // 기본: 중간 지점에서 분할
-    const mid = Math.floor(sentences.length / 2);
-    return [
-      { text: sentences.slice(0, mid).join(' '), delay: 0 },
-      { text: sentences.slice(mid).join(' '), delay: 1500 + Math.random() * 2000 },
-    ];
+    // 분할점이 있으면 첫 번째 자연 분할점 사용
+    if (breakpoints.length > 0) {
+      const bp = breakpoints[0];
+
+      // 3개 메시지 분할 (문장 5개 이상 + 분할점 2개 이상)
+      if (sentences.length >= 5 && breakpoints.length >= 2 && Math.random() < 0.3) {
+        const bp2 = breakpoints[1];
+        return [
+          { text: sentences.slice(0, bp).join(' '), delay: 0 },
+          { text: sentences.slice(bp, bp2).join(' '), delay: 1200 + Math.random() * 1800 },
+          { text: sentences.slice(bp2).join(' '), delay: 1000 + Math.random() * 1500 },
+        ];
+      }
+
+      return [
+        { text: sentences.slice(0, bp).join(' '), delay: 0 },
+        { text: sentences.slice(bp).join(' '), delay: 1200 + Math.random() * 2000 },
+      ];
+    }
+
+    // 분할점 없으면 중간 지점에서 분할 (2문장 이상일 때만)
+    if (sentences.length >= 3) {
+      const mid = Math.floor(sentences.length / 2);
+      return [
+        { text: sentences.slice(0, mid).join(' '), delay: 0 },
+        { text: sentences.slice(mid).join(' '), delay: 1500 + Math.random() * 2000 },
+      ];
+    }
+
+    return [{ text, delay: 0 }];
   }
 }
 

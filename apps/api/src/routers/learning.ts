@@ -77,16 +77,33 @@ export const learningRouter = router({
         temperature: 0.1,
         maxTokens: 4000,
         complexity: 'complex',
+        jsonMode: true,
       });
 
-      // AI 응답에서 JSON 추출
+      // AI 응답에서 JSON 추출 (다중 폴백 전략)
       let parsed: any;
       try {
-        // JSON 블록이 ```json ... ``` 로 감싸져 있을 수 있음
-        const jsonMatch = response.text.match(/```(?:json)?\s*([\s\S]*?)```/);
-        const jsonStr = jsonMatch ? jsonMatch[1].trim() : response.text.trim();
-        parsed = JSON.parse(jsonStr);
-      } catch {
+        const text = response.text.trim();
+
+        // 1순위: 직접 JSON 파싱 (jsonMode 덕분에 대부분 여기서 성공)
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          // 2순위: ```json ... ``` 코드블록에서 추출
+          const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[1].trim());
+          } else {
+            // 3순위: 텍스트 내 첫 번째 JSON 객체 추출 ({ ... })
+            const objMatch = text.match(/\{[\s\S]*\}/);
+            if (objMatch) {
+              parsed = JSON.parse(objMatch[0]);
+            } else {
+              throw new Error('No JSON found in response');
+            }
+          }
+        }
+      } catch (parseError) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'AI 응답을 파싱할 수 없습니다. 대화 형식을 확인해주세요.',

@@ -123,15 +123,110 @@ async function getEscalationThreshold(): Promise<number> {
   return cachedThreshold.value;
 }
 
-// ===================== 프롬프트 (대화 히스토리 지원) =====================
+// ===================== 톤 미러링: 고객 말투 감지 =====================
+interface CustomerToneProfile {
+  formalityLevel: 'formal' | 'semi-formal' | 'casual';
+  usesEmoji: boolean;
+  messageLength: 'short' | 'medium' | 'long';
+  honorific: string;
+}
+
+function detectCustomerTone(message: string, historyContext: string): CustomerToneProfile {
+  const allText = `${message} ${historyContext}`;
+
+  // 격식 수준 감지
+  let formalityLevel: CustomerToneProfile['formalityLevel'] = 'formal';
+  const casualPatterns = /ㅋㅋ|ㅎㅎ|ㅇㅇ|ㅇㅋ|ㄱㅅ|ㄴㄴ|반말|해줘|해봐|알려줘[^요]|뭐야|왜[?？]|그래\?/;
+  const semiFormalPatterns = /~요|해요|인가요|인데요|할게요|줄게요|어떤가요|괜찮나요/;
+
+  if (casualPatterns.test(allText)) {
+    formalityLevel = 'casual';
+  } else if (semiFormalPatterns.test(allText)) {
+    formalityLevel = 'semi-formal';
+  }
+
+  // 이모지/이모티콘 사용 감지
+  const usesEmoji = /[😀-😿🙀-🙏🤗-🤹👍-👻💀-💿🎀-🏿🐀-🔿🕐-🗿😊🥰🤔💪🔥❤️✨⭐️🎉👏💕🥺😂😅😍🙏💯🎵☺️]/u.test(allText)
+    || /\^\^|ㅋㅋ|ㅎㅎ|:\)|:D|XD/.test(allText);
+
+  // 메시지 길이 경향
+  const avgLen = message.length;
+  const messageLength = avgLen < 30 ? 'short' : avgLen < 100 ? 'medium' : 'long';
+
+  // 호칭 감지 (고객이 사용하는 호칭)
+  let honorific = '대표님';
+  if (/담당자님/.test(allText)) honorific = '담당자님';
+  else if (/선생님/.test(allText)) honorific = '선생님';
+
+  return { formalityLevel, usesEmoji, messageLength, honorific };
+}
+
+function buildToneMirrorInstructions(tone: CustomerToneProfile): string {
+  const lines: string[] = [];
+
+  switch (tone.formalityLevel) {
+    case 'casual':
+      lines.push('- 고객이 캐주얼한 말투를 사용하므로 살짝 부드러운 존댓말 (~요 체) 사용 가능');
+      lines.push('- 너무 딱딱하지 않게, 친근하면서도 프로페셔널하게');
+      break;
+    case 'semi-formal':
+      lines.push('- 고객이 반존댓말을 사용하므로 자연스러운 존댓말 (~요 체 위주) 사용');
+      break;
+    default:
+      lines.push('- 격식체 존댓말 (~습니다 체) 사용');
+      break;
+  }
+
+  if (tone.usesEmoji) {
+    lines.push('- 고객이 이모지를 사용하므로, 적절한 곳에 이모지 1~2개 가볍게 활용 가능');
+  } else {
+    lines.push('- 이모지 사용 자제');
+  }
+
+  if (tone.messageLength === 'short') {
+    lines.push('- 고객이 짧은 메시지를 선호하므로 1~2문장으로 간결하게 답변');
+  } else if (tone.messageLength === 'long') {
+    lines.push('- 고객이 상세한 질문을 하므로 충분히 설명하되 3~5문장 이내');
+  }
+
+  return lines.join('\n');
+}
+
+// ===================== 학습된 톤 프로필 로드 (DB 캐시) =====================
+let cachedToneProfile: { patterns: string[]; style: string; loadedAt: number } | null = null;
+const TONE_PROFILE_CACHE_TTL = 300_000;
+
+async function getLearnedToneProfile(): Promise<{ patterns: string[]; style: string }> {
+  const now = Date.now();
+  if (cachedToneProfile && now - cachedToneProfile.loadedAt < TONE_PROFILE_CACHE_TTL) {
+    return { patterns: cachedToneProfile.patterns, style: cachedToneProfile.style };
+  }
+  try {
+    const config = await configRepo.get('learned.tone_profile');
+    if (config?.value) {
+      const parsed = typeof config.value === 'string' ? JSON.parse(config.value) : config.value;
+      cachedToneProfile = {
+        patterns: Array.isArray(parsed.patterns) ? parsed.patterns : [],
+        style: String(parsed.style ?? ''),
+        loadedAt: now,
+      };
+    } else {
+      cachedToneProfile = { patterns: [], style: '', loadedAt: now };
+    }
+  } catch {
+    cachedToneProfile = { patterns: [], style: '', loadedAt: now };
+  }
+  return { patterns: cachedToneProfile.patterns, style: cachedToneProfile.style };
+}
+
+// ===================== 프롬프트 (대화 히스토리 + 톤 미러링 지원) =====================
 let cachedPrompt: { template: string; loadedAt: number } | null = null;
 const PROMPT_CACHE_TTL = 300000;
 
-async function getSystemPrompt(knowledgeContext: string, historyContext: string): Promise<string> {
+async function getSystemPrompt(knowledgeContext: string, historyContext: string, customerMessage?: string): Promise<string> {
   const now = Date.now();
   if (!cachedPrompt || now - cachedPrompt.loadedAt > PROMPT_CACHE_TTL) {
     const row = await promptRepo.get('default_answer').catch(() => null);
-    // 항상 캐시 업데이트 (빈 결과도 캐시하여 DB 반복 조회 방지)
     cachedPrompt = { template: row?.template ?? '', loadedAt: now };
   }
 
@@ -141,25 +236,33 @@ async function getSystemPrompt(knowledgeContext: string, historyContext: string)
       .replace('{{history}}', historyContext);
   }
 
-  // DB에서 로드 실패 시 기본 프롬프트 (강화된 버전)
+  // 톤 미러링 + 학습된 톤 프로필 적용
+  const customerTone = detectCustomerTone(customerMessage || '', historyContext);
+  const toneMirrorInstructions = buildToneMirrorInstructions(customerTone);
+
+  const learnedTone = await getLearnedToneProfile();
+  const learnedToneSection = learnedTone.patterns.length > 0
+    ? `\n학습된 응대 스타일:\n- 스타일: ${learnedTone.style || '프로페셔널'}\n- 자주 쓰는 표현: ${learnedTone.patterns.slice(0, 5).join(', ')}`
+    : '';
+
   return `당신은 온라인 마케팅/광고 대행사의 CS 담당 직원입니다.
 카카오톡으로 광고주(고객)와 대화합니다. 고객은 대부분 사업주/대표입니다.
 
 대화 스타일:
-- 고객을 "대표님"으로 호칭 (예: "네 대표님, ~하겠습니다")
-- 프로페셔널하고 신뢰감 있는 존댓말 사용
+- 고객을 "${customerTone.honorific}"으로 호칭
+${toneMirrorInstructions}
 - 2~4문장 이내로 간결하고 핵심적으로 답변
 - 고객이 불만이면 먼저 공감하고 사과
 - 이전 대화 맥락을 자연스럽게 이어가기
 - 확신 있는 정보만 전달, 불확실하면 "확인 후 안내드리겠습니다"
 - 실무 경험이 풍부한 담당자답게 구체적으로 답변
+${learnedToneSection}
 
 절대 하지 않을 것:
 - AI/챗봇이라는 것을 직간접적으로 드러내기
 - "도움이 필요하시면 말씀해주세요" 같은 로봇적 마무리를 매번 붙이기
 - "물론입니다", "당연하죠" 같은 과잉 동의 표현
 - 매번 같은 패턴의 인사나 마무리 반복
-- 이모지 남발 (최소한으로만 사용)
 - 불확실한 정보를 확신 있게 전달하기
 
 최근 대화:
@@ -169,19 +272,41 @@ ${historyContext || '(첫 대화)'}
 ${knowledgeContext}`;
 }
 
-// ===================== 대화 히스토리 포맷팅 =====================
+// ===================== 대화 히스토리 포맷팅 (확장된 컨텍스트) =====================
 async function getConversationHistory(roomId: string, userName: string): Promise<string> {
   try {
-    const history = await conversationRepo.getHistory(roomId, userName, 5);
+    const history = await conversationRepo.getHistory(roomId, userName, 12);
     if (!history || history.length === 0) return '';
 
     // 최신→오래된 순으로 반환되므로 reverse
-    return history.reverse().map((h: any) => {
-      const parts: string[] = [];
-      if (h.user_message) parts.push(`[고객] ${h.user_message}`);
-      if (h.bot_response) parts.push(`[나] ${h.bot_response}`);
-      return parts.join('\n');
-    }).join('\n\n');
+    const ordered = history.reverse();
+
+    // 최근 5개는 전문, 나머지는 요약 (컨텍스트 길이 최적화)
+    const recentCount = Math.min(5, ordered.length);
+    const olderItems = ordered.slice(0, ordered.length - recentCount);
+    const recentItems = ordered.slice(ordered.length - recentCount);
+
+    const parts: string[] = [];
+
+    // 오래된 대화 요약
+    if (olderItems.length > 0) {
+      const summary = olderItems.map((h: any) => {
+        const q = h.user_message ? h.user_message.substring(0, 50) : '';
+        const a = h.bot_response ? h.bot_response.substring(0, 50) : '';
+        return `고객:"${q}${h.user_message?.length > 50 ? '...' : ''}" → 답변:"${a}${h.bot_response?.length > 50 ? '...' : ''}"`;
+      }).join(' | ');
+      parts.push(`[이전 대화 요약] ${summary}`);
+    }
+
+    // 최근 대화 전문
+    for (const h of recentItems) {
+      const lines: string[] = [];
+      if (h.user_message) lines.push(`[고객] ${h.user_message}`);
+      if (h.bot_response) lines.push(`[나] ${h.bot_response}`);
+      if (lines.length > 0) parts.push(lines.join('\n'));
+    }
+
+    return parts.join('\n\n');
   } catch {
     return '';
   }
@@ -517,7 +642,7 @@ webhookApp.post('/message', async (c) => {
         });
       } else {
         // 단일 모델 (기존 동작)
-        const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext);
+        const systemPrompt = await getSystemPrompt(knowledgeContext, historyContext, combinedMessage);
         const response = await aiGateway.generate({
           prompt: combinedMessage,
           systemPrompt,
@@ -541,12 +666,14 @@ webhookApp.post('/message', async (c) => {
       knowledgeTier = knowledge[0]?.tier ?? null;
       usedKnowledgeId = knowledge[0]?.id ?? null;
 
-      // 인간화 (톤 분석 포함)
+      // 인간화 (톤 분석 + 톤 미러링 포함)
       const isThankYou = /감사|고마|ㄱㅅ/.test(combinedMessage);
+      const customerToneForHumanizer = detectCustomerTone(combinedMessage, historyContext);
       answer = humanizer.humanizeResponse(responseText, {
         isThankYou,
         customerMessage: combinedMessage,
         hasHistory: historyContext.length > 0,
+        customerFormality: customerToneForHumanizer.formalityLevel,
       });
 
       if (knowledge[0]?.id) {

@@ -22,6 +22,8 @@ export interface LLMRequest {
   provider?: ProviderName;
   /** 이미지 URL (비전 모델용, 미래 대비) */
   imageUrl?: string;
+  /** JSON 모드 (OpenAI response_format: json_object) */
+  jsonMode?: boolean;
 }
 
 export interface LLMResponse {
@@ -457,12 +459,19 @@ ${history ? `최근 대화:\n${history}` : ''}`;
       messages.push({ role: 'user', content: request.prompt });
     }
 
-    const response = await openai.chat.completions.create({
+    const createParams: any = {
       model: request.imageUrl ? 'gpt-4o' : modelName, // 비전은 gpt-4o 필수
       messages,
       temperature: request.temperature ?? getEnv().AI_TEMPERATURE,
       max_tokens: request.maxTokens ?? getEnv().AI_MAX_TOKENS,
-    });
+    };
+
+    // JSON 모드: 구조화된 응답 보장
+    if (request.jsonMode) {
+      createParams.response_format = { type: 'json_object' };
+    }
+
+    const response = await openai.chat.completions.create(createParams);
 
     const inputTokens = response.usage?.prompt_tokens ?? 0;
     const outputTokens = response.usage?.completion_tokens ?? 0;
