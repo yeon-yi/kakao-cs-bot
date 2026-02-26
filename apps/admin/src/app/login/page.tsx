@@ -73,7 +73,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-xs text-slate-600">
-          &copy; 2026 (주)모집. All rights reserved.
+          &copy; 2026 (주)모집 관리팀. All rights reserved.
         </p>
       </div>
 
@@ -134,7 +134,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-6 text-center text-xs text-[hsl(var(--muted))]">
-            &copy; 2026 (주)모집. All rights reserved.
+            &copy; 2026 (주)모집 관리팀. All rights reserved.
           </p>
         </div>
       </div>

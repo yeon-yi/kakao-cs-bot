@@ -1,14 +1,7 @@
 'use client';
 
-import { Sidebar } from '@/components/sidebar';
+import { AppShell } from '@/components/app-shell';
 
 export default function KnowledgeLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">
-        {children}
-      </main>
-    </div>
-  );
+  return <AppShell>{children}</AppShell>;
 }
