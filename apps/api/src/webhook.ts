@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { createLogger, getEnv } from '@kakao-cs-bot/config';
 import { KnowledgeRepository, ConversationRepository, EscalationRepository, ProactiveRepository, PromptRepository, ConfigRepository, query as dbQuery, queryOne as dbQueryOne } from '@kakao-cs-bot/database';
 import { IdentityRepository } from '@kakao-cs-bot/database';
-import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
+import { embedder, aiGateway, humanizer, AIResponseCache } from '@kakao-cs-bot/ai';
 import Redis from 'ioredis';
 
 const logger = createLogger('api:webhook');
@@ -14,6 +14,15 @@ const proactiveRepo = new ProactiveRepository();
 const promptRepo = new PromptRepository();
 const identityRepo = new IdentityRepository();
 const configRepo = new ConfigRepository();
+
+// 응답 캐시 (Redis 기반, 신뢰도별 TTL)
+let responseCache: AIResponseCache | null = null;
+function getResponseCache(): AIResponseCache {
+  if (!responseCache) {
+    responseCache = new AIResponseCache();
+  }
+  return responseCache;
+}
 
 // Redis for implicit feedback tracking
 let redis: Redis | null = null;
@@ -74,54 +83,61 @@ function parseConfigValue(config: any, fallback: string = ''): string {
   }
 }
 
-// ===================== 운영시간 체크 (DB 우선, env 폴백, 5분 캐시) =====================
-let cachedOpHours: { start: string; end: string; loadedAt: number } | null = null;
-const OP_HOURS_CACHE_TTL = 300_000;
+// ===================== 통합 설정 캐시 (bot.mode, bot.test_rooms, 운영시간 등) =====================
+interface WebhookConfigCache {
+  botMode: string;
+  testRooms: string[];
+  opStart: string;
+  opEnd: string;
+  escalationThreshold: number;
+  loadedAt: number;
+}
+let webhookConfigCache: WebhookConfigCache | null = null;
+const WEBHOOK_CONFIG_CACHE_TTL = 60_000; // 1분 (자주 변경 가능한 설정)
 
-async function isOperatingHoursFromDB(): Promise<boolean> {
+async function getWebhookConfig(): Promise<WebhookConfigCache> {
   const now = Date.now();
-  if (!cachedOpHours || now - cachedOpHours.loadedAt >= OP_HOURS_CACHE_TTL) {
-    const env = getEnv();
-    const [startConfig, endConfig] = await Promise.all([
-      configRepo.get('operation.start_time').catch(() => null),
-      configRepo.get('operation.end_time').catch(() => null),
-    ]);
-    cachedOpHours = {
-      start: parseConfigValue(startConfig, env.OPERATION_START_TIME || '09:50'),
-      end: parseConfigValue(endConfig, env.OPERATION_END_TIME || '18:30'),
-      loadedAt: now,
-    };
+  if (webhookConfigCache && now - webhookConfigCache.loadedAt < WEBHOOK_CONFIG_CACHE_TTL) {
+    return webhookConfigCache;
   }
 
+  const env = getEnv();
+  // 모든 설정을 한번에 배치 조회
+  const [modeConfig, testRoomsConfig, startConfig, endConfig, thresholdConfig] = await Promise.all([
+    configRepo.get('bot.mode').catch(() => null),
+    configRepo.get('bot.test_rooms').catch(() => null),
+    configRepo.get('operation.start_time').catch(() => null),
+    configRepo.get('operation.end_time').catch(() => null),
+    configRepo.get('response.escalation_threshold').catch(() => null),
+  ]);
+
+  const testRoomsStr = parseConfigValue(testRoomsConfig, '').trim();
+  const thresholdVal = parseFloat(parseConfigValue(thresholdConfig, '0.5'));
+
+  webhookConfigCache = {
+    botMode: parseConfigValue(modeConfig, 'off').trim(),
+    testRooms: testRoomsStr ? testRoomsStr.split(',').map((r: string) => r.trim()).filter(Boolean) : [],
+    opStart: parseConfigValue(startConfig, env.OPERATION_START_TIME || '09:50'),
+    opEnd: parseConfigValue(endConfig, env.OPERATION_END_TIME || '18:30'),
+    escalationThreshold: isNaN(thresholdVal) ? 0.5 : thresholdVal,
+    loadedAt: now,
+  };
+  return webhookConfigCache;
+}
+
+function isOperatingHoursFromConfig(config: WebhookConfigCache): boolean {
   const tz = getEnv().OPERATION_TIMEZONE || 'Asia/Seoul';
   const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
   const kstNow = new Date(nowStr);
-  const [startH, startM] = cachedOpHours.start.split(':').map(Number);
-  const [endH, endM] = cachedOpHours.end.split(':').map(Number);
+  const [startH, startM] = config.opStart.split(':').map(Number);
+  const [endH, endM] = config.opEnd.split(':').map(Number);
   const current = kstNow.getHours() * 60 + kstNow.getMinutes();
   const start = startH * 60 + startM;
   const end = endH * 60 + endM;
   return current >= start && current <= end;
 }
 
-// ===================== 에스컬레이션 임계값 (DB 연동, 5분 캐시) =====================
-let cachedThreshold: { value: number; loadedAt: number } | null = null;
-const THRESHOLD_CACHE_TTL = 300_000;
-
-async function getEscalationThreshold(): Promise<number> {
-  const now = Date.now();
-  if (cachedThreshold && now - cachedThreshold.loadedAt < THRESHOLD_CACHE_TTL) {
-    return cachedThreshold.value;
-  }
-  try {
-    const config = await configRepo.get('response.escalation_threshold');
-    const val = parseFloat(parseConfigValue(config, '0.5'));
-    cachedThreshold = { value: isNaN(val) ? 0.5 : val, loadedAt: now };
-  } catch {
-    cachedThreshold = { value: 0.5, loadedAt: now };
-  }
-  return cachedThreshold.value;
-}
+// getEscalationThreshold는 getWebhookConfig()로 통합됨
 
 // ===================== 톤 미러링: 고객 말투 감지 =====================
 interface CustomerToneProfile {
@@ -219,6 +235,71 @@ async function getLearnedToneProfile(): Promise<{ patterns: string[]; style: str
   return { patterns: cachedToneProfile.patterns, style: cachedToneProfile.style };
 }
 
+// ===================== 고객 프로필 영속화 (방별 톤 선호도) =====================
+interface PersistedCustomerProfile {
+  formalityLevel: 'formal' | 'semi-formal' | 'casual';
+  usesEmoji: boolean;
+  avgMessageLength: 'short' | 'medium' | 'long';
+  honorific: string;
+  interactionCount: number;
+  lastUpdated: number;
+}
+
+async function getCustomerProfile(roomId: string): Promise<PersistedCustomerProfile | null> {
+  try {
+    const data = await getRedis().get(`customer:profile:${roomId}`);
+    return data ? JSON.parse(data) : null;
+  } catch { return null; }
+}
+
+async function updateCustomerProfile(roomId: string, detected: CustomerToneProfile): Promise<void> {
+  try {
+    const existing = await getCustomerProfile(roomId);
+    const profile: PersistedCustomerProfile = existing || {
+      formalityLevel: detected.formalityLevel,
+      usesEmoji: detected.usesEmoji,
+      avgMessageLength: detected.messageLength,
+      honorific: detected.honorific,
+      interactionCount: 0,
+      lastUpdated: Date.now(),
+    };
+
+    profile.interactionCount++;
+    profile.lastUpdated = Date.now();
+
+    // 최근 감지 결과를 점진적으로 반영 (EMA)
+    if (profile.interactionCount > 1) {
+      // 최근 톤이 바뀌면 3회 연속 시 업데이트
+      if (detected.formalityLevel !== profile.formalityLevel) {
+        // 새 톤이 3회 이상 반복되면 전환
+        const countKey = `customer:tone_shift:${roomId}`;
+        const shiftCount = await getRedis().incr(countKey);
+        await getRedis().expire(countKey, 1800); // 30분 유지
+        if (shiftCount >= 3) {
+          profile.formalityLevel = detected.formalityLevel;
+          await getRedis().del(countKey);
+        }
+      } else {
+        await getRedis().del(`customer:tone_shift:${roomId}`).catch(() => {});
+      }
+      profile.usesEmoji = detected.usesEmoji || profile.usesEmoji;
+      profile.avgMessageLength = detected.messageLength;
+      profile.honorific = detected.honorific || profile.honorific;
+    } else {
+      // 첫 대화: 감지 결과 그대로 사용
+      profile.formalityLevel = detected.formalityLevel;
+      profile.usesEmoji = detected.usesEmoji;
+      profile.avgMessageLength = detected.messageLength;
+      profile.honorific = detected.honorific;
+    }
+
+    // 30일 TTL
+    await getRedis().setex(`customer:profile:${roomId}`, 86400 * 30, JSON.stringify(profile));
+  } catch (e) {
+    logger.warn('Customer profile update failed', { error: String(e) });
+  }
+}
+
 // ===================== 프롬프트 (대화 히스토리 + 톤 미러링 지원) =====================
 let cachedPrompt: { template: string; loadedAt: number } | null = null;
 const PROMPT_CACHE_TTL = 300000;
@@ -236,7 +317,7 @@ async function getSystemPrompt(knowledgeContext: string, historyContext: string,
       .replace('{{history}}', historyContext);
   }
 
-  // 톤 미러링 + 학습된 톤 프로필 적용
+  // 톤 미러링 + 학습된 톤 프로필 적용 (영속 프로필 참조)
   const customerTone = detectCustomerTone(customerMessage || '', historyContext);
   const toneMirrorInstructions = buildToneMirrorInstructions(customerTone);
 
@@ -457,34 +538,27 @@ webhookApp.post('/message', async (c) => {
       }
     }
 
-    // 0-2. 차단된 방 체크
-    const isBlocked = await proactiveRepo.isBlocked(roomId).catch(() => false);
+    // 0-2. 차단된 방 체크 + 설정 배치 로드 (병렬)
+    const [isBlocked, webhookConfig] = await Promise.all([
+      proactiveRepo.isBlocked(roomId).catch(() => false),
+      getWebhookConfig(),
+    ]);
     if (isBlocked) {
       return c.json({ answer: null, reason: 'room_blocked' });
     }
 
-    // 0-3. 봇 모드 체크 (off / test / on)
-    const botModeConfig = await configRepo.get('bot.mode').catch(() => null);
-    const botMode = parseConfigValue(botModeConfig, 'off').trim();
-
-    if (botMode === 'off') {
+    // 0-3. 봇 모드 체크 (off / test / on) - 캐시된 설정 사용
+    if (webhookConfig.botMode === 'off') {
       return c.json({ answer: null, reason: 'bot_disabled' });
     }
 
     let isTestMode = false;
-    if (botMode === 'test') {
-      // 테스트 모드: 등록된 방에서만 응답 (운영시간 무시 - 24시간 테스트 가능)
-      const testRoomsConfig = await configRepo.get('bot.test_rooms').catch(() => null);
-      const testRoomsStr = parseConfigValue(testRoomsConfig, '').trim();
-      const testRooms = testRoomsStr ? testRoomsStr.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
-
-      if (testRooms.length === 0 || !testRooms.includes(roomId)) {
+    if (webhookConfig.botMode === 'test') {
+      if (webhookConfig.testRooms.length === 0 || !webhookConfig.testRooms.includes(roomId)) {
         return c.json({ answer: null, reason: 'test_mode_excluded' });
       }
       isTestMode = true;
-      // 테스트 방이면 통과 → 운영시간 무시하고 정상 응답
     }
-    // botMode === 'on' → 전체 통과 (운영시간 체크 필요)
 
     // 0-4. 사진/미디어 메시지 처리
     if (effectiveMessageType !== 'text') {
@@ -495,8 +569,8 @@ webhookApp.post('/message', async (c) => {
       });
     }
 
-    // 1. 운영 시간 체크 (테스트 모드에서는 건너뜀 - 24시간 학습/테스트 가능)
-    if (!isTestMode && !(await isOperatingHoursFromDB())) {
+    // 1. 운영 시간 체크 (테스트 모드에서는 건너뜀)
+    if (!isTestMode && !isOperatingHoursFromConfig(webhookConfig)) {
       return c.json({ answer: null, reason: 'outside_hours' });
     }
 
@@ -541,21 +615,66 @@ webhookApp.post('/message', async (c) => {
     await checkImplicitFeedback(roomId, userName || 'unknown', combinedMessage, embedding);
 
     const topSimilarity = knowledge.length > 0 ? (knowledge[0].similarity ?? 0) : 0;
-    const threshold = await getEscalationThreshold();
+    const threshold = webhookConfig.escalationThreshold;
+    const softEscalationThreshold = Math.min(threshold + 0.15, 0.65);
     const needsEscalation = knowledge.length === 0 || topSimilarity < threshold;
+    const isSoftEscalation = !needsEscalation && topSimilarity < softEscalationThreshold;
 
-    let answer: string;
+    let answer = '';
     let escalated = false;
     let category: string | null = null;
     let aiModel: string | null = null;
     let knowledgeTier: number | null = null;
     let conversationId: number | null = null;
     let usedKnowledgeId: string | null = null;
+    let fromCache = false;
 
     // 대화 히스토리 가져오기
     const historyContext = await getConversationHistory(roomId, userName || 'unknown');
 
-    if (needsEscalation) {
+    // 캐시 조회 (에스컬레이션이 아닌 경우만)
+    if (!needsEscalation) {
+      try {
+        const cached = await getResponseCache().get(combinedMessage);
+        if (cached && cached.confidence >= topSimilarity * 0.9) {
+          // 캐시 히트 → AI 호출 스킵
+          const isThankYou = /감사|고마|ㄱㅅ/.test(combinedMessage);
+          const customerToneForHumanizer = detectCustomerTone(combinedMessage, historyContext);
+          answer = humanizer.humanizeResponse(cached.answer, {
+            isThankYou,
+            customerMessage: combinedMessage,
+            hasHistory: historyContext.length > 0,
+            customerFormality: customerToneForHumanizer.formalityLevel,
+          });
+          aiModel = cached.model + ' (cached)';
+          knowledgeTier = knowledge[0]?.tier ?? null;
+          usedKnowledgeId = knowledge[0]?.id ?? null;
+          fromCache = true;
+
+          const conversation = await conversationRepo.create({
+            room_id: roomId,
+            user_id: userName || 'unknown',
+            user_name: userName,
+            user_message: combinedMessage,
+            bot_response: answer,
+            context: { isGroupChat, cached: true },
+            knowledge_tier: knowledgeTier,
+            ai_model: aiModel,
+            confidence: topSimilarity,
+            response_time_ms: Date.now() - startTime,
+          });
+          conversationId = conversation?.id;
+
+          logger.info('Cache hit response', { roomId, model: cached.model, processingMs: Date.now() - startTime });
+        }
+      } catch (e) {
+        logger.warn('Cache lookup failed', { error: String(e) });
+      }
+    }
+
+    if (fromCache) {
+      // 캐시 히트 - 이미 처리 완료, 아래 로직 건너뜀
+    } else if (needsEscalation) {
       // 4a. 에스컬레이션
       answer = humanizer.humanizeResponse(getEscalationMessage(), { isThankYou: false });
       escalated = true;
@@ -594,12 +713,42 @@ webhookApp.post('/message', async (c) => {
         }
       }
 
+      // 에스컬레이션 컨텍스트: 최근 대화 + 이전 에스컬레이션 이력
+      let escalationContext = '';
+      try {
+        const parts: string[] = [];
+        // 최근 대화 요약
+        if (historyContext) {
+          parts.push(`[최근 대화]\n${historyContext.substring(0, 500)}`);
+        }
+        // 이전 에스컬레이션 이력 (최근 3건)
+        const prevEscalations = await escalationRepo.list({
+          status: undefined,
+          offset: 0, limit: 3,
+        }).catch(() => ({ items: [] }));
+        const roomEscalations = (prevEscalations as any)?.items?.filter?.((e: any) => e.room_id === roomId) || [];
+        if (roomEscalations.length > 0) {
+          const esc = roomEscalations.slice(0, 3).map((e: any) =>
+            `${e.created_at?.substring(0, 10) || '?'}: "${(e.user_message || '').substring(0, 80)}" → ${e.status}`
+          ).join('\n');
+          parts.push(`[이전 에스컬레이션]\n${esc}`);
+        }
+        // 고객 프로필
+        const profile = await getCustomerProfile(roomId);
+        if (profile) {
+          parts.push(`[고객 프로필] 격식:${profile.formalityLevel}, 대화${profile.interactionCount}회`);
+        }
+        escalationContext = parts.join('\n\n');
+      } catch {}
+
       await escalationRepo.create({
         conversation_id: conversation?.id,
         room_id: roomId,
         user_id: userName || 'unknown',
         user_name: userName,
-        user_message: combinedMessage,
+        user_message: escalationContext
+          ? `${combinedMessage}\n\n--- 컨텍스트 ---\n${escalationContext}`
+          : combinedMessage,
         bot_response: answer,
         category,
         confidence: topSimilarity,
@@ -676,6 +825,17 @@ webhookApp.post('/message', async (c) => {
         customerFormality: customerToneForHumanizer.formalityLevel,
       });
 
+      // Soft-escalation: 신뢰도 낮은 응답에 확인 안내 추가
+      if (isSoftEscalation) {
+        const softSuffixes = [
+          '\n\n혹시 더 정확한 안내가 필요하시면 담당자가 확인 후 다시 안내드리겠습니다.',
+          '\n\n정확한 내용은 담당자가 확인 후 안내드리겠습니다!',
+          '\n\n추가 확인이 필요하시면 말씀해주세요, 담당자가 확인해드리겠습니다.',
+        ];
+        answer += softSuffixes[Math.floor(Math.random() * softSuffixes.length)];
+        escalated = true; // soft-escalation도 에스컬레이션 생성
+      }
+
       if (knowledge[0]?.id) {
         await knowledgeRepo.incrementUsage(knowledge[0].id).catch(() => {});
       }
@@ -694,6 +854,46 @@ webhookApp.post('/message', async (c) => {
         chain_steps: chainStepsJson ? JSON.stringify(chainStepsJson) : null,
       });
       conversationId = conversation?.id;
+
+      // 캐시 저장 (soft-escalation 아닌 정상 응답만)
+      if (!isSoftEscalation) {
+        try {
+          await getResponseCache().set(combinedMessage, answer, topSimilarity, aiModel || 'unknown');
+        } catch (e) {
+          logger.warn('Cache set failed', { error: String(e) });
+        }
+      }
+
+      // Soft-escalation일 때 에스컬레이션 레코드 생성 (우선순위 낮게)
+      if (isSoftEscalation && conversationId) {
+        try {
+          const cat = await classifyCategory(combinedMessage);
+          category = cat;
+          let assignedStaffId: number | null = null;
+          const roomStaff = await findStaffInRoom(roomId).catch(() => null);
+          if (roomStaff) assignedStaffId = roomStaff.staffId;
+          if (!assignedStaffId) {
+            const catAssignee = await escalationRepo.getAssigneeByCategory(cat, roomId).catch(() => null);
+            if (catAssignee) assignedStaffId = (catAssignee as any).staff_id;
+          }
+          await escalationRepo.create({
+            conversation_id: conversationId,
+            room_id: roomId,
+            user_id: userName || 'unknown',
+            user_name: userName,
+            user_message: combinedMessage,
+            bot_response: answer,
+            category: cat,
+            confidence: topSimilarity,
+            status: assignedStaffId ? 'assigned' : 'pending',
+            assigned_to: assignedStaffId,
+            escalation_type: 'soft',
+          });
+          logger.info('Soft-escalation created', { roomId, confidence: topSimilarity, category: cat });
+        } catch (e) {
+          logger.warn('Soft-escalation record failed', { error: String(e) });
+        }
+      }
 
       // hedging 감지 → 불확실 주제 기록
       if (/정확하지 않을 수|확인이 필요|아마|추후 확인/.test(answer)) {
@@ -723,7 +923,11 @@ webhookApp.post('/message', async (c) => {
       } catch {}
     }
 
-    // 6. 인간다운 딜레이 계산 + 메시지 분할
+    // 6. 고객 프로필 업데이트 (비동기, 실패 무시)
+    const detectedTone = detectCustomerTone(combinedMessage, historyContext);
+    updateCustomerProfile(roomId, detectedTone).catch(() => {});
+
+    // 7. 인간다운 딜레이 계산 + 메시지 분할
     const delay = humanizer.getResponseDelay();
     const messages = humanizer.splitIntoMessages(answer);
 
