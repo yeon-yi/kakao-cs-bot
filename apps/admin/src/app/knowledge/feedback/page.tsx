@@ -76,9 +76,9 @@ export default function EscalationPage() {
     },
   });
 
-  function handleAnswer(id: number) {
+  function handleAnswer(id: number | string) {
     if (!answerText.trim()) return;
-    answerMutation.mutate({ id, answer: answerText, category: answerCategory || undefined });
+    answerMutation.mutate({ id: Number(id), answer: answerText, category: answerCategory || undefined });
   }
 
   return (
@@ -211,7 +211,7 @@ export default function EscalationPage() {
                         <MessageSquare size={14} /> 답변
                       </Button>
                       <Button size="sm" variant="secondary"
-                        onClick={() => dismissMutation.mutate({ id: item.id })}
+                        onClick={() => dismissMutation.mutate({ id: Number(item.id) })}
                         disabled={dismissMutation.isPending}>
                         무시
                       </Button>
