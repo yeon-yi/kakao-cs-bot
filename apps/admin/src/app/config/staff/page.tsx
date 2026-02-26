@@ -12,6 +12,7 @@ interface StaffForm {
   realName: string;
   kakaoName: string;
   kakaoUserId: string;
+  kakaoRoomId: string;
   email: string;
   phone: string;
   department: string;
@@ -19,7 +20,7 @@ interface StaffForm {
 }
 
 const emptyForm: StaffForm = {
-  realName: '', kakaoName: '', kakaoUserId: '', email: '', phone: '', department: '', position: '',
+  realName: '', kakaoName: '', kakaoUserId: '', kakaoRoomId: '', email: '', phone: '', department: '', position: '',
 };
 
 export default function StaffPage() {
@@ -52,8 +53,8 @@ export default function StaffPage() {
     setIsAdding(false);
     setForm({
       realName: staff.real_name || '', kakaoName: staff.kakao_name || '',
-      kakaoUserId: staff.kakao_user_id || '', email: staff.email || '',
-      phone: staff.phone || '', department: staff.department || '', position: staff.position || '',
+      kakaoUserId: staff.kakao_user_id || '', kakaoRoomId: staff.kakao_room_id || '',
+      email: staff.email || '', phone: staff.phone || '', department: staff.department || '', position: staff.position || '',
     });
   }
 
@@ -97,6 +98,9 @@ export default function StaffPage() {
               </FormField>
               <FormField label="카카오 이름" hint="카카오톡 프로필 이름과 일치해야 봇이 인식합니다">
                 <Input type="text" value={form.kakaoName} onChange={(e) => setForm({ ...form, kakaoName: e.currentTarget.value })} placeholder="카카오톡 프로필 이름" />
+              </FormField>
+              <FormField label="카카오 개인톡방 ID" hint="에스컬레이션 알림을 받을 1:1 톡방명 (앱 로그에서 확인)">
+                <Input type="text" value={form.kakaoRoomId} onChange={(e) => setForm({ ...form, kakaoRoomId: e.currentTarget.value })} placeholder="직원이름 (1:1 톡방명)" />
               </FormField>
               <FormField label="부서">
                 <Input type="text" value={form.department} onChange={(e) => setForm({ ...form, department: e.currentTarget.value })} placeholder="마케팅팀" />

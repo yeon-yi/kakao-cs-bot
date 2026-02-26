@@ -110,12 +110,17 @@ export async function getStaffNameMap(): Promise<Map<string, number>> {
     return staffNameCache.names;
   }
   const rows = await dbQuery(
-    'SELECT id, kakao_name FROM company_staff WHERE is_active = true AND kakao_name IS NOT NULL',
+    `SELECT cs.id, cs.kakao_name, cs.real_name, sa.alias
+     FROM company_staff cs
+     LEFT JOIN staff_aliases sa ON sa.staff_id = cs.id AND sa.platform = 'kakao'
+     WHERE cs.is_active = true`,
     []
   );
   const map = new Map<string, number>();
   for (const r of rows) {
     if (r.kakao_name) map.set(r.kakao_name, r.id);
+    if (r.real_name) map.set(r.real_name, r.id);
+    if (r.alias) map.set(r.alias, r.id);
   }
   staffNameCache = { names: map, loadedAt: now };
   return map;
@@ -187,7 +192,13 @@ ${toneMirrorInstructions || '- 격식체 존댓말 (~습니다 체) 사용'}
 - 이전 대화 맥락을 자연스럽게 이어가기
 - 확신 있는 정보만 전달, 불확실하면 "확인 후 안내드리겠습니다"
 - 실무 경험이 풍부한 담당자답게 구체적으로 답변
+- 이미 "확인 후 안내" 했으면 같은 말 반복하지 말고 구체적 진행 상황 안내
 ${learnedToneSection}
+
+범위 외 질문:
+- 자사 서비스(네이버트래픽, 블로그기자단, 인스타그램, 홈페이지, SEO, 영상촬영)와 무관한 질문에는 답변하지 마세요
+- 구글 애드센스, 유튜브 광고, 페이스북 광고 등 타사 서비스 문의는 정중히 거절
+- "해당 내용은 저희 서비스 범위가 아니라 안내가 어렵습니다"로 거절
 
 절대 하지 않을 것:
 - AI/챗봇이라는 것을 직간접적으로 드러내기
@@ -195,6 +206,10 @@ ${learnedToneSection}
 - "물론입니다", "당연하죠" 같은 과잉 동의 표현
 - 매번 같은 패턴의 인사나 마무리 반복
 - 불확실한 정보를 확신 있게 전달하기
+- 이모지, 이모티콘, 특수기호(📌✅🙏😊👍 등) 일체 사용 금지
+- 물결(~) 사용 금지, 느낌표 남발 금지
+- 콤마 뒤에 호칭 붙이지 않기 ("네, 대표님" X → "네 대표님" O)
+- "확인 후 안내드리겠습니다"를 반복하지 않기
 
 최근 대화:
 ${historyContext || '(첫 대화)'}

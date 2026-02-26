@@ -3,15 +3,22 @@
 // 메시지 배칭 디바운스 (ms)
 export const MESSAGE_BUFFER_MS = 3000;
 
-// 에스컬레이션 응답 템플릿
-export const ESCALATION_TEMPLATES = [
-  '확인해보고 바로 안내드릴게요! 잠시만 기다려주세요~',
-  '아 그 부분은 제가 좀 더 확인해볼게요. 금방 답변드리겠습니다!',
-  '잠깐만요, 정확한 내용 확인해서 바로 안내드릴게요!',
-  '네 해당 부분 확인 후 안내드리겠습니다. 조금만 기다려주세요!',
-  '좋은 질문이세요! 정확하게 확인해서 말씀드릴게요~',
-  '아 그 부분이시군요. 확인해보고 바로 알려드리겠습니다!',
+// 에스컬레이션 응답 템플릿 (첫 번째)
+export const FIRST_ESCALATION_TEMPLATES = [
+  '담당자에게 확인 후 안내드리겠습니다. 잠시만 기다려주세요',
+  '해당 부분 확인해서 바로 말씀드리겠습니다',
+  '확인해보고 안내드리겠습니다. 조금만 기다려주세요',
 ];
+
+// 에스컬레이션 응답 템플릿 (2회째)
+export const FOLLOWUP_ESCALATION_TEMPLATES = [
+  '아직 확인 중입니다. 담당자가 곧 연락드리겠습니다',
+  '죄송합니다 확인이 좀 지연되고 있습니다. 빠르게 안내드리겠습니다',
+  '담당자가 확인 중입니다. 곧 안내드리겠습니다',
+];
+
+// 하위 호환용 (기존 코드가 참조할 수 있음)
+export const ESCALATION_TEMPLATES = FIRST_ESCALATION_TEMPLATES;
 
 // Soft-escalation 추가 안내 문구
 export const SOFT_ESCALATION_SUFFIXES = [

@@ -37,7 +37,7 @@ export const uncertaintyRouter = router({
   resolve: protectedProcedure
     .input(z.object({
       id: z.number(),
-      question: z.string().min(3),
+      question: z.string().min(1),
       answer: z.string().min(5),
       category: z.string().optional(),
     }))

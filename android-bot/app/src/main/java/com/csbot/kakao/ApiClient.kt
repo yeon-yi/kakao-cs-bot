@@ -55,7 +55,7 @@ object ApiClient {
 
             val data = JSONObject(response.body?.string() ?: "{}")
             MessageResult(
-                answer = data.optString("answer", null),
+                answer = if (data.isNull("answer")) null else data.optString("answer", "").takeIf { it.isNotEmpty() && it != "null" },
                 delay = data.optLong("delay", 3000),
                 escalated = data.optBoolean("escalated", false),
                 confidence = data.optDouble("confidence", 0.0),

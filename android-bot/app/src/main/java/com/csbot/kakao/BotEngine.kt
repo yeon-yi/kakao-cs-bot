@@ -22,7 +22,8 @@ object BotEngine {
 
     private val SKIP_PATTERNS = listOf(
         Regex("^[ㅋㅎㅠㅜㅇ]+$"),
-        Regex("^(ㅇㅇ|ㅇㅋ|ㅎㅇ|ㄴㄴ|ㄱㄱ|ㄱㅅ)$")
+        Regex("^(ㅇㅇ|ㅇㅋ|ㅎㅇ|ㄴㄴ|ㄱㄱ|ㄱㅅ)$"),
+        Regex("^[!?.,;:~·…\\s]+$")
     )
     private val SKIP_MESSAGES = setOf("이모티콘")
     private val MEDIA_MESSAGE_TYPES = mapOf("사진" to "image", "동영상" to "video")
@@ -44,11 +45,9 @@ object BotEngine {
 
         if (!prefs.botEnabled) return
 
-        // Filter
+        // Filter (운영시간/요일은 서버에서 판단 - 테스트 모드 지원)
         if (shouldSkip(message)) return
         if (isCooldown(room, prefs.roomCooldownMs)) return
-        if (!isOperatingHours()) return
-        if (!isWeekday()) return
 
         // Error pause
         if (errorCount >= MAX_ERRORS) {

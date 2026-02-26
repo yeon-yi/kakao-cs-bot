@@ -3,17 +3,19 @@ import { createLogger } from '@kakao-cs-bot/config';
 import {
   EscalationRepository,
   ConversationRepository,
+  ProactiveRepository,
   query as dbQuery,
   queryOne as dbQueryOne,
 } from '@kakao-cs-bot/database';
 import { aiGateway } from '@kakao-cs-bot/ai';
 import type { CreateEscalationParams } from './types';
-import { VALID_CATEGORIES, ESCALATION_TEMPLATES } from './constants';
+import { VALID_CATEGORIES, FIRST_ESCALATION_TEMPLATES, FOLLOWUP_ESCALATION_TEMPLATES } from './constants';
 import { getCustomerProfile } from './tone-analyzer';
 
 const logger = createLogger('api:webhook:escalation');
 const escalationRepo = new EscalationRepository();
 const conversationRepo = new ConversationRepository();
+const proactiveRepo = new ProactiveRepository();
 
 // ===================== 방 내 직원 찾기 =====================
 export async function findStaffInRoom(roomId: string): Promise<{ staffId: number; staffName: string } | null> {
@@ -125,11 +127,34 @@ export async function createEscalation(params: CreateEscalationParams): Promise<
     roomId, userName, category, type: escalationType,
     similarity: confidence, assignedTo: assignedSource,
   });
+
+  // 담당자 개인 카카오톡 알림 (프로액티브 메시지)
+  if (assignedStaffId) {
+    try {
+      const staff = await dbQueryOne(
+        'SELECT kakao_room_id, real_name FROM company_staff WHERE id = $1 AND kakao_room_id IS NOT NULL',
+        [assignedStaffId]
+      );
+      if (staff?.kakao_room_id) {
+        const msgText = message.length > 100 ? message.substring(0, 100) + '...' : message;
+        await proactiveRepo.createMessage({
+          room_id: staff.kakao_room_id,
+          user_name: staff.real_name,
+          message: `[에스컬레이션 알림]\n톡방: ${roomId}\n고객: ${userName}\n문의: ${msgText}\n카테고리: ${category || '일반'}`,
+          message_type: 'staff_notification',
+        });
+        logger.info('Staff notification queued', { staffId: assignedStaffId, staffRoom: staff.kakao_room_id });
+      }
+    } catch (e) {
+      logger.warn('Staff notification failed', { error: String(e) });
+    }
+  }
 }
 
 // ===================== 에스컬레이션 메시지 =====================
-export function getEscalationMessage(): string {
-  return ESCALATION_TEMPLATES[Math.floor(Math.random() * ESCALATION_TEMPLATES.length)];
+export function getEscalationMessage(previousEscalationCount: number = 0): string {
+  const templates = previousEscalationCount >= 1 ? FOLLOWUP_ESCALATION_TEMPLATES : FIRST_ESCALATION_TEMPLATES;
+  return templates[Math.floor(Math.random() * templates.length)];
 }
 
 // ===================== AI 카테고리 분류 =====================

@@ -40,6 +40,7 @@ export const staffRouter = router({
       realName: z.string().min(1, '이름을 입력하세요'),
       kakaoName: z.string().optional(),
       kakaoUserId: z.string().optional(),
+      kakaoRoomId: z.string().optional(),
       email: z.string().email().optional().or(z.literal('')),
       phone: z.string().optional(),
       department: z.string().optional(),
@@ -47,11 +48,11 @@ export const staffRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const data = await queryOne(
-        `INSERT INTO company_staff (real_name, kakao_name, kakao_user_id, email, phone, department, position, added_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO company_staff (real_name, kakao_name, kakao_user_id, kakao_room_id, email, phone, department, position, added_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [
           input.realName, input.kakaoName || null, input.kakaoUserId || null,
-          input.email || null, input.phone || null,
+          input.kakaoRoomId || null, input.email || null, input.phone || null,
           input.department || null, input.position || null, ctx.userId,
         ]
       );
@@ -65,6 +66,7 @@ export const staffRouter = router({
       realName: z.string().min(1).optional(),
       kakaoName: z.string().optional(),
       kakaoUserId: z.string().optional(),
+      kakaoRoomId: z.string().optional(),
       email: z.string().email().optional().or(z.literal('')),
       phone: z.string().optional(),
       department: z.string().optional(),
@@ -78,6 +80,7 @@ export const staffRouter = router({
 
       const fieldMap: Record<string, string> = {
         realName: 'real_name', kakaoName: 'kakao_name', kakaoUserId: 'kakao_user_id',
+        kakaoRoomId: 'kakao_room_id',
         email: 'email', phone: 'phone', department: 'department', position: 'position',
       };
 

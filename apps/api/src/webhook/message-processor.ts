@@ -155,6 +155,17 @@ export async function processMessage(c: any): Promise<Response> {
       return c.json({ error: 'roomId and message are required' }, 400);
     }
 
+    // 0-0. 무의미 메시지 서버 사이드 필터
+    const SKIP_SERVER_PATTERNS = [
+      /^[!?.,;:~·…\s]+$/,           // 순수 특수문자/구두점만
+      /^[ㅋㅎㅠㅜㅇ]{1,}$/,          // 자음 반복
+      /^(ㅇㅇ|ㅇㅋ|ㅎㅇ|ㄴㄴ|ㄱㄱ|ㄱㅅ|ㅋㅋ|ㅎㅎ|넵|넹|ㅇ|ㅋ|ㅎ)$/,
+      /^이모티콘$/,
+    ];
+    if (SKIP_SERVER_PATTERNS.some(p => p.test(message.trim()))) {
+      return c.json({ answer: null, reason: 'skip_pattern' });
+    }
+
     // 0-1. 발신자 직원 여부 자동 감지
     if (userName) {
       try {
@@ -302,8 +313,46 @@ export async function processMessage(c: any): Promise<Response> {
     if (fromCache) {
       // 캐시 히트 완료
     } else if (needsEscalation) {
-      // 4a. 에스컬레이션
-      answer = humanizer.humanizeResponse(getEscalationMessage(), { isThankYou: false });
+      // 4a-1. 범위 외 질문 체크 (유사도 매우 낮을 때)
+      if (topSimilarity < 0.3) {
+        const inScope = await checkIfInScope(combinedMessage);
+        if (!inScope) {
+          const outOfScopeAnswer = '해당 내용은 저희 서비스 범위가 아니라 안내가 어렵습니다. 저희는 네이버/인스타그램/블로그 마케팅을 전문으로 하고 있습니다.';
+          await conversationRepo.create({
+            room_id: roomId, user_id: userName || 'unknown', user_name: userName,
+            user_message: combinedMessage, bot_response: outOfScopeAnswer,
+            context: { isGroupChat, outOfScope: true },
+            knowledge_tier: null, ai_model: null, confidence: topSimilarity,
+            response_time_ms: Date.now() - startTime,
+          });
+          logger.info('Out-of-scope rejected', { roomId, userName, similarity: topSimilarity });
+          return c.json({
+            answer: outOfScopeAnswer, delay: humanizer.getResponseDelay(),
+            escalated: false, confidence: topSimilarity, processingMs: Date.now() - startTime,
+          });
+        }
+      }
+
+      // 4a-2. 연속 에스컬레이션 감지 → 3회 이상이면 무응답
+      const recentHistory = await conversationRepo.getHistory(roomId, userName || 'unknown', 5).catch(() => []);
+      const recentEscCount = (recentHistory || []).filter((c: any) =>
+        c.bot_response && /확인.*안내|담당자.*확인|잠시만.*기다려|확인 중/.test(c.bot_response)
+      ).length;
+
+      if (recentEscCount >= 4) {
+        // 4회 이상 연속 에스컬레이션 → 에스컬레이션 생성만 하고 무응답
+        await createEscalation({
+          roomId, userName: userName || 'unknown',
+          message: combinedMessage, answer: '',
+          confidence: topSimilarity, conversationId: null,
+          escalationType: 'low_confidence', includeContext: true,
+        });
+        logger.info('Consecutive escalation suppressed', { roomId, count: recentEscCount });
+        return c.json({ answer: null, reason: 'consecutive_escalation' });
+      }
+
+      // 4a-3. 에스컬레이션 응답 (횟수에 따라 다른 템플릿)
+      answer = humanizer.humanizeResponse(getEscalationMessage(recentEscCount), { isThankYou: false });
       escalated = true;
 
       const conversation = await conversationRepo.create({
@@ -332,7 +381,7 @@ export async function processMessage(c: any): Promise<Response> {
 
       await recordUncertainty(combinedMessage, '일반', topSimilarity).catch(() => {});
 
-      logger.info('Escalation created', { roomId, userName, similarity: topSimilarity, threshold });
+      logger.info('Escalation created', { roomId, userName, similarity: topSimilarity, threshold, escCount: recentEscCount });
     } else {
       // 4b. 정상 응답
       const knowledgeContext = knowledge
@@ -497,6 +546,28 @@ export async function processMessage(c: any): Promise<Response> {
   } catch (error) {
     logger.error('Webhook error', { error: String(error) });
     return c.json({ error: 'Internal server error' }, 500);
+  }
+}
+
+// ===================== 범위 판별 =====================
+async function checkIfInScope(message: string): Promise<boolean> {
+  try {
+    const response = await aiGateway.generate({
+      prompt: `이 질문이 온라인 마케팅/광고 대행사 서비스와 관련 있는지 판별하세요.
+서비스 범위: 네이버트래픽, 블로그기자단, 인스타그램 마케팅, 홈페이지 제작, SEO, 영상촬영, 온라인 광고 전반
+광고주의 광고 진행상황/결과/비용/계약 문의도 범위 내입니다.
+일반적인 인사나 안부도 범위 내입니다.
+
+질문: "${message}"
+
+관련 있으면 YES, 없으면 NO만 출력:`,
+      systemPrompt: 'YES 또는 NO만 출력하세요.',
+      temperature: 0.1,
+      complexity: 'simple',
+    });
+    return response.text.trim().toUpperCase().startsWith('YES');
+  } catch {
+    return true; // 에러 시 범위 내로 간주 (안전)
   }
 }
 

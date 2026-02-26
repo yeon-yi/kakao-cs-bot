@@ -97,8 +97,8 @@ export class Humanizer {
     // 4. 문장 종결 미세 변형 (자연스러움)
     result = this.varySentenceEndings(result);
 
-    // 5. 상황별 이모지 (프로페셔널하게)
-    result = this.addProfessionalEmoji(result, context, tone);
+    // 5. 이모지 사용 안 함 (비활성화됨)
+    // result = this.addProfessionalEmoji(result, context, tone);
 
     return result.trim();
   }
@@ -106,6 +106,16 @@ export class Humanizer {
   // AI 특유의 패턴 제거
   private removeAIPatterns(text: string): string {
     let result = text;
+
+    // 모든 이모지/이모티콘/특수기호 제거
+    result = result.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '');
+    result = result.replace(/[📌✅🙏😊👍💡🎉❤️⭐🔥💪🥰🤔💕🥺😂😅😍💯🎵☺️👏🙂🥲😆🤣😭😢🫡🤝👌🙌🎊🎶💖💗💝💞💟❣️✨🌟⭐️🏆🎯🔑💎🌈🍀]+/g, '');
+
+    // 물결(~) 제거
+    result = result.replace(/~+/g, '');
+
+    // "네, 대표님" → "네 대표님" (콤마+호칭 패턴)
+    result = result.replace(/([네아예])([,，])\s*(대표님|담당자님|선생님)/g, '$1 $3');
 
     // 과도한 캐주얼 표현 제거
     result = result.replace(/습니당|해용|~~|ㅋㅋ+|ㅎㅎ+|\^\^/g, '');
