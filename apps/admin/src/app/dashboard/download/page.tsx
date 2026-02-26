@@ -1,9 +1,57 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Download, Smartphone, Shield, CheckCircle2 } from 'lucide-react';
+import { Download, Smartphone, Shield, CheckCircle2, Clock, HardDrive, Tag } from 'lucide-react';
+
+interface ApkInfo {
+  version: string;
+  updatedAt: string;
+  fileSize: number;
+  changelog: string;
+  available: boolean;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '-';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}.${m}.${day} ${h}:${min}`;
+}
+
+function timeAgo(iso: string): string {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '방금 전';
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  return `${day}일 전`;
+}
 
 export default function DownloadPage() {
+  const [info, setInfo] = useState<ApkInfo | null>(null);
+
+  useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://1.234.83.118:3000';
+    fetch(`${apiBase}/download/apk/info`)
+      .then(r => r.json())
+      .then(setInfo)
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="max-w-[640px]">
       <div className="mb-6">
@@ -26,12 +74,33 @@ export default function DownloadPage() {
               <div className="mt-3 flex items-center gap-3 text-xs text-[hsl(var(--muted))]">
                 <span>Android</span>
                 <span className="text-[hsl(var(--border))]">|</span>
-                <span>v1.0.0</span>
+                <span className="flex items-center gap-1">
+                  <Tag size={10} />
+                  v{info?.version || '1.0.0'}
+                </span>
                 <span className="text-[hsl(var(--border))]">|</span>
-                <span>약 25MB</span>
+                <span className="flex items-center gap-1">
+                  <HardDrive size={10} />
+                  {info ? formatFileSize(info.fileSize) : '약 25MB'}
+                </span>
               </div>
             </div>
           </div>
+
+          {/* 업데이트 정보 */}
+          {info?.updatedAt && (
+            <div className="mt-4 rounded-md bg-blue-50 border border-blue-100 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-blue-700">
+                <Clock size={12} className="shrink-0" />
+                <span className="font-medium">최근 업데이트:</span>
+                <span>{formatDate(info.updatedAt)}</span>
+                <span className="text-blue-400">({timeAgo(info.updatedAt)})</span>
+              </div>
+              {info.changelog && (
+                <p className="mt-1.5 text-xs text-blue-600 pl-5">{info.changelog}</p>
+              )}
+            </div>
+          )}
 
           <div className="mt-5">
             <a
@@ -39,7 +108,7 @@ export default function DownloadPage() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              <Button className="w-full">
+              <Button className="w-full" disabled={info?.available === false}>
                 <Download size={15} />
                 APK 다운로드
               </Button>

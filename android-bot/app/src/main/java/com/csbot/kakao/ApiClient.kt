@@ -60,7 +60,7 @@ object ApiClient {
                 escalated = data.optBoolean("escalated", false),
                 confidence = data.optDouble("confidence", 0.0),
                 processingMs = data.optLong("processingMs", 0),
-                reason = data.optString("reason", null)
+                reason = if (data.isNull("reason")) null else data.optString("reason", "").takeIf { it.isNotEmpty() && it != "null" }
             )
         } catch (e: Exception) {
             LogManager.e("API 호출 실패: ${e.message}")

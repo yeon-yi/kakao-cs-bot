@@ -94,6 +94,37 @@ app.get('/download/apk', async (c) => {
   });
 });
 
+// APK 메타정보 (버전, 업데이트 시간, 파일 크기)
+app.get('/download/apk/info', async (c) => {
+  const fs = await import('fs');
+  const apkPath = '/app/public/csbot.apk';
+  const metaPath = '/app/public/csbot-meta.json';
+  let meta: { version: string; updatedAt: string; changelog: string } = {
+    version: '1.0.0', updatedAt: '', changelog: '',
+  };
+  try {
+    if (fs.existsSync(metaPath)) {
+      meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+    }
+  } catch {}
+  let fileSize = 0;
+  let fileUpdatedAt = meta.updatedAt;
+  try {
+    if (fs.existsSync(apkPath)) {
+      const stat = fs.statSync(apkPath);
+      fileSize = stat.size;
+      if (!fileUpdatedAt) fileUpdatedAt = stat.mtime.toISOString();
+    }
+  } catch {}
+  return c.json({
+    version: meta.version,
+    updatedAt: fileUpdatedAt,
+    fileSize,
+    changelog: meta.changelog,
+    available: fs.existsSync(apkPath),
+  });
+});
+
 // ===================== 라우트 =====================
 app.route('/webhook', webhookApp);
 
