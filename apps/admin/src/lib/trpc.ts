@@ -6,8 +6,10 @@ import type { AppRouter } from '@kakao-cs-bot/api/src/routers';
 export const trpc: ReturnType<typeof createTRPCReact<AppRouter>> = createTRPCReact<AppRouter>();
 
 export function getBaseUrl() {
-  // 브라우저: 상대경로 사용 (nginx 프록시가 /trpc/ → API로 라우팅)
-  if (typeof window !== 'undefined') return '';
+  // 브라우저: NEXT_PUBLIC_API_URL 사용
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_API_URL || '';
+  }
   // 서버사이드: 직접 API 호출
   return process.env.API_URL || 'http://localhost:3000';
 }
