@@ -3,7 +3,7 @@ import { Providers } from './providers';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://1.234.83.118:3001'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://1.234.83.118'),
   title: 'OpenPLAT',
   description: '카카오톡 기반 고객 응대 자동화 플랫폼 - 실시간 CS 자동 응답 시스템 관리',
   icons: { icon: '/favicon.svg' },
