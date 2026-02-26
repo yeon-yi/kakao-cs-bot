@@ -2,12 +2,12 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 const variants = {
-  primary: 'bg-[hsl(var(--primary))] text-white hover:brightness-110 active:brightness-95',
-  secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-zinc-200',
-  destructive: 'bg-[hsl(var(--destructive))] text-white hover:brightness-110',
-  ghost: 'hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]',
-  outline: 'border border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--accent))]',
-  success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+  primary: 'bg-[hsl(var(--primary))] text-white hover:bg-blue-700 active:bg-blue-800',
+  secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-slate-200',
+  destructive: 'bg-[hsl(var(--destructive))] text-white hover:bg-red-700',
+  ghost: 'hover:bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))]',
+  outline: 'border border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))]',
+  success: 'bg-[hsl(var(--success))] text-white hover:bg-emerald-700',
 } as const;
 
 const sizes = {
@@ -27,7 +27,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       disabled={disabled}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium transition-all',
+        'inline-flex items-center justify-center rounded-md font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1',
         'disabled:pointer-events-none disabled:opacity-50',
         variants[variant],

@@ -7,7 +7,8 @@ import { trpc } from '@/lib/trpc';
 import {
   LayoutDashboard, BarChart3, BookOpen, PlusCircle, Upload, MessageSquare,
   AlertCircle, MessagesSquare, UserCheck, Bell, FileText, Users,
-  UserCog, Settings, LogOut, AlertTriangle, Smartphone,
+  UserCog, Settings, LogOut, AlertTriangle, Smartphone, Download,
+  GraduationCap,
 } from 'lucide-react';
 
 const navSections = [
@@ -15,7 +16,8 @@ const navSections = [
     items: [
       { href: '/dashboard', label: '대시보드', icon: LayoutDashboard },
       { href: '/dashboard/analytics', label: '분석', icon: BarChart3 },
-      { href: '/dashboard/devices', label: '연결 기기', icon: Smartphone, badge: 'devices' as any },
+      { href: '/dashboard/devices', label: '연결 기기', icon: Smartphone, badge: 'devices' as const },
+      { href: '/dashboard/download', label: '앱 다운로드', icon: Download },
     ],
   },
   {
@@ -25,8 +27,9 @@ const navSections = [
       { href: '/knowledge/add', label: '지식 추가', icon: PlusCircle },
       { href: '/knowledge/upload', label: '파일 업로드', icon: Upload },
       { href: '/knowledge/chat', label: '대화형 학습', icon: MessageSquare },
-      { href: '/knowledge/feedback', label: '에스컬레이션', icon: AlertCircle, badge: true },
-      { href: '/knowledge/uncertainty', label: '불확실 주제', icon: AlertTriangle, badge: 'uncertainty' as any },
+      { href: '/knowledge/learn', label: '대화 학습', icon: GraduationCap },
+      { href: '/knowledge/feedback', label: '에스컬레이션', icon: AlertCircle, badge: true as const },
+      { href: '/knowledge/uncertainty', label: '불확실 주제', icon: AlertTriangle, badge: 'uncertainty' as const },
     ],
   },
   {
@@ -68,28 +71,23 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-screen w-[220px] flex-col bg-zinc-950 text-zinc-400 select-none">
-      <div className="px-5 py-5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">
-            CS
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white leading-none">CS Bot</p>
-            <p className="text-[10px] text-zinc-500 mt-0.5">Admin Console</p>
-          </div>
-        </div>
+    <aside className="flex h-screen w-[216px] flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-text))] select-none">
+      {/* Logo */}
+      <div className="px-5 py-4 border-b border-white/[0.06]">
+        <p className="text-[15px] font-bold text-white tracking-tight leading-none">OpenPLAT</p>
+        <p className="text-[10px] text-slate-500 mt-1">CS Management</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3">
         {navSections.map((section, si) => (
-          <div key={si} className={si > 0 ? 'mt-5' : ''}>
+          <div key={si} className={si > 0 ? 'mt-4' : ''}>
             {section.title && (
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
                 {section.title}
               </p>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-px">
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
@@ -102,27 +100,30 @@ export function Sidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
+                      'relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition-colors',
                       isActive
-                        ? 'bg-zinc-800/80 text-white font-medium'
-                        : 'hover:bg-zinc-900 hover:text-zinc-200',
+                        ? 'text-white bg-[hsl(var(--sidebar-hover))]'
+                        : 'hover:bg-[hsl(var(--sidebar-hover))] hover:text-slate-200',
                     )}
                   >
-                    <Icon size={16} className={isActive ? 'text-blue-400' : 'text-zinc-500'} />
+                    {isActive && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r-sm bg-[hsl(var(--sidebar-active))]" />
+                    )}
+                    <Icon size={15} className={isActive ? 'text-[hsl(var(--sidebar-active))]' : 'text-slate-500'} />
                     <span className="flex-1">{item.label}</span>
                     {hasBadge && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white leading-none">
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
                         {pendingData.count}
                       </span>
                     )}
                     {hasUncertaintyBadge && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white leading-none">
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white leading-none">
                         {uncertaintyData.count}
                       </span>
                     )}
                     {hasDeviceBadge && (
                       <span className={cn(
-                        'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white leading-none',
+                        'flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white leading-none',
                         deviceSummary.error > 0 ? 'bg-red-500' : deviceSummary.online > 0 ? 'bg-emerald-500' : 'bg-zinc-500'
                       )}>
                         {deviceSummary.online}/{deviceSummary.total}
@@ -136,12 +137,13 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-zinc-800/60 p-3">
+      {/* Logout */}
+      <div className="border-t border-white/[0.06] p-2">
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-300"
+          className="flex w-full items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] text-slate-500 transition-colors hover:bg-[hsl(var(--sidebar-hover))] hover:text-slate-300"
         >
-          <LogOut size={16} />
+          <LogOut size={15} />
           <span>로그아웃</span>
         </button>
       </div>

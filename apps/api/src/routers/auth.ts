@@ -3,6 +3,9 @@ import jwt from 'jsonwebtoken';
 import { router, publicProcedure } from '../trpc';
 import { getEnv } from '@kakao-cs-bot/config';
 import { TRPCError } from '@trpc/server';
+import { ConfigRepository } from '@kakao-cs-bot/database';
+
+const configRepo = new ConfigRepository();
 
 export const authRouter = router({
   login: publicProcedure
@@ -12,7 +15,12 @@ export const authRouter = router({
     }))
     .mutation(async ({ input }) => {
       const env = getEnv();
-      if (input.username !== 'admin' || input.password !== env.ADMIN_PASSWORD) {
+      let adminPassword = env.ADMIN_PASSWORD;
+      try {
+        const dbPassword = await configRepo.get('admin.password');
+        if (dbPassword?.value) adminPassword = String(dbPassword.value);
+      } catch {}
+      if (input.username !== 'admin' || input.password !== adminPassword) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: '아이디 또는 비밀번호가 올바르지 않습니다' });
       }
 

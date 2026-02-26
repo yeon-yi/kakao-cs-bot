@@ -1,7 +1,6 @@
 'use client';
 
 import { trpc } from '@/lib/trpc';
-import { Card, CardTitle, CardValue } from '@/components/ui/card';
 import {
   Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target,
   MessageSquare, Users, BookOpen, Zap, BarChart3, MessagesSquare,
@@ -38,35 +37,60 @@ interface StatCardProps {
   sub?: string;
 }
 
+const accentColors: Record<string, string> = {
+  blue: 'bg-blue-600',
+  green: 'bg-emerald-600',
+  amber: 'bg-amber-500',
+  red: 'bg-red-500',
+  violet: 'bg-violet-600',
+  cyan: 'bg-teal-600',
+  indigo: 'bg-indigo-600',
+  pink: 'bg-pink-500',
+};
+
+const iconColors: Record<string, string> = {
+  blue: 'text-blue-600',
+  green: 'text-emerald-600',
+  amber: 'text-amber-500',
+  red: 'text-red-500',
+  violet: 'text-violet-600',
+  cyan: 'text-teal-600',
+  indigo: 'text-indigo-600',
+  pink: 'text-pink-500',
+};
+
 function StatCard({ title, value, unit, icon, alert, color = 'blue', sub }: StatCardProps) {
   const Icon = iconMap[icon];
-  const colorMap: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    red: 'bg-red-50 text-red-600',
-    violet: 'bg-violet-50 text-violet-600',
-    cyan: 'bg-cyan-50 text-cyan-600',
-    indigo: 'bg-indigo-50 text-indigo-600',
-    pink: 'bg-pink-50 text-pink-600',
-  };
 
   return (
-    <Card className={cn(alert && 'ring-2 ring-red-200 border-red-200')}>
+    <div className={cn(
+      'relative overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-white p-4 shadow-sm',
+      alert && 'border-red-300',
+    )}>
+      <div className={cn('absolute left-0 top-0 bottom-0 w-[3px]', accentColors[color])} />
       <div className="flex items-start justify-between">
-        <div>
-          <CardTitle>{title}</CardTitle>
-          <CardValue className="mt-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-[hsl(var(--muted))] truncate">{title}</p>
+          <p className="mt-1.5 text-xl font-bold text-[hsl(var(--foreground))] tracking-tight">
             {typeof value === 'number' ? value.toLocaleString() : value}
-            {unit && <span className="ml-1 text-sm font-normal text-zinc-400">{unit}</span>}
-          </CardValue>
-          {sub && <p className="mt-1 text-xs text-zinc-400">{sub}</p>}
+            {unit && <span className="ml-1 text-xs font-normal text-[hsl(var(--muted))]">{unit}</span>}
+          </p>
+          {sub && <p className="mt-1 text-[11px] text-[hsl(var(--muted))]">{sub}</p>}
         </div>
-        <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', colorMap[color])}>
-          <Icon size={18} />
-        </div>
+        <Icon size={16} className={cn('shrink-0 mt-0.5', iconColors[color])} />
       </div>
-    </Card>
+    </div>
+  );
+}
+
+function SectionHeader({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="mb-3 flex items-baseline gap-3">
+      <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">{title}</h2>
+      {description && (
+        <span className="text-[11px] text-[hsl(var(--muted))]">{description}</span>
+      )}
+    </div>
   );
 }
 
@@ -89,20 +113,28 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
       </div>
     );
   }
 
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}. ${String(now.getMonth() + 1).padStart(2, '0')}. ${String(now.getDate()).padStart(2, '0')}`;
+
   return (
     <div>
-      {/* 오늘 실시간 */}
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">대시보드</h1>
-        <p className="mt-1 text-sm text-zinc-500">실시간 현황 (1분마다 갱신)</p>
+      {/* Header */}
+      <div className="mb-6 flex items-baseline justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-[hsl(var(--foreground))]">대시보드</h1>
+          <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">실시간 현황 (1분 갱신)</p>
+        </div>
+        <span className="text-xs text-[hsl(var(--muted))]">{dateStr}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 mb-8">
+      {/* 오늘 실시간 */}
+      <SectionHeader title="오늘 현황" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 mb-7">
         <StatCard
           title="오늘 메시지"
           value={today?.totalMessages ?? 0}
@@ -161,13 +193,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* AI 학습 현황 */}
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-zinc-800">AI 학습 현황</h2>
-        <p className="text-xs text-zinc-400">이번 주 학습 진행 상태</p>
-      </div>
+      {/* Divider */}
+      <hr className="border-[hsl(var(--border))] mb-6" />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+      {/* AI 학습 현황 */}
+      <SectionHeader title="AI 학습 현황" description="이번 주 학습 진행" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-7">
         <StatCard
           title="금주 신규 지식"
           value={learning?.newKnowledgeThisWeek ?? 0}
@@ -206,12 +237,9 @@ export default function DashboardPage() {
       {/* AI 체인 현황 */}
       {chainStats && chainStats.totalResponses > 0 && (
         <>
-          <div className="mb-4">
-            <h2 className="text-base font-semibold text-zinc-800">AI 체인 현황</h2>
-            <p className="text-xs text-zinc-400">최근 7일 멀티모델 체인 사용 통계</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+          <hr className="border-[hsl(var(--border))] mb-6" />
+          <SectionHeader title="AI 체인 현황" description="최근 7일 멀티모델 통계" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-7">
             <StatCard
               title="체인 사용률"
               value={`${(chainStats.chainRate * 100).toFixed(0)}%`}
@@ -244,14 +272,12 @@ export default function DashboardPage() {
       )}
 
       {/* 30일 요약 */}
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-zinc-800">30일 요약</h2>
-        <p className="text-xs text-zinc-400">
-          {summary?.period?.start} ~ {summary?.period?.end}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+      <hr className="border-[hsl(var(--border))] mb-6" />
+      <SectionHeader
+        title="30일 요약"
+        description={summary?.period ? `${summary.period.start} ~ ${summary.period.end}` : undefined}
+      />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-7">
         <StatCard
           title="총 메시지"
           value={summary?.totalMessages ?? 0}
@@ -283,31 +309,30 @@ export default function DashboardPage() {
       {/* 최근 대화 */}
       {today?.recentRooms && today.recentRooms.length > 0 && (
         <>
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-zinc-800">최근 대화</h2>
-          </div>
-          <Card>
-            <div className="divide-y divide-zinc-100">
+          <hr className="border-[hsl(var(--border))] mb-6" />
+          <SectionHeader title="최근 대화" />
+          <div className="rounded-lg border border-[hsl(var(--border))] bg-white shadow-sm">
+            <div className="divide-y divide-[hsl(var(--border))]">
               {today.recentRooms.map((r: any) => (
-                <div key={`${r.room_id}-${r.created_at}`} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                <div key={`${r.room_id}-${r.created_at}`} className="flex items-center justify-between px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-zinc-800 truncate">{r.room_id}</span>
+                      <span className="text-sm font-medium text-[hsl(var(--foreground))] truncate">{r.room_id}</span>
                       {r.user_name && (
-                        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
+                        <span className="shrink-0 rounded bg-[hsl(var(--secondary))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted))]">
                           {r.user_name}
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs text-zinc-400 truncate">{r.user_message}</p>
+                    <p className="mt-0.5 text-xs text-[hsl(var(--muted))] truncate">{r.user_message}</p>
                   </div>
-                  <span className="ml-3 shrink-0 text-[10px] text-zinc-300">
+                  <span className="ml-3 shrink-0 text-[10px] text-[hsl(var(--muted))]">
                     {new Date(r.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               ))}
             </div>
-          </Card>
+          </div>
         </>
       )}
     </div>

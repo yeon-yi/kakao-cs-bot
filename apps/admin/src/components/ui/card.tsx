@@ -4,22 +4,22 @@ import { cn } from '@/lib/utils';
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-xl border border-[hsl(var(--border))] bg-white p-5 shadow-sm', className)}
+      className={cn('rounded-lg border border-[hsl(var(--border))] bg-white p-4 shadow-sm', className)}
       {...props}
     />
   );
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('mb-4', className)} {...props} />;
+  return <div className={cn('mb-3', className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn('text-sm font-medium text-[hsl(var(--muted-foreground))]', className)} {...props} />;
+  return <h3 className={cn('text-xs font-medium text-[hsl(var(--muted-foreground))]', className)} {...props} />;
 }
 
 export function CardValue({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))]', className)} {...props} />;
+  return <div className={cn('text-xl font-bold tracking-tight text-[hsl(var(--foreground))]', className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {

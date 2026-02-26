@@ -14,6 +14,7 @@ import { staffRouter } from './staff';
 import { conversationsRouter } from './conversations';
 import { uncertaintyRouter } from './uncertainty';
 import { devicesRouter } from './devices';
+import { learningRouter } from './learning';
 
 export const appRouter = router({
   knowledge: knowledgeRouter,
@@ -31,6 +32,7 @@ export const appRouter = router({
   conversations: conversationsRouter,
   uncertainty: uncertaintyRouter,
   devices: devicesRouter,
+  learning: learningRouter,
 });
 
 export type AppRouter = typeof appRouter;
