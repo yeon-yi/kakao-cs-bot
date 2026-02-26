@@ -221,7 +221,7 @@ export default function AssigneesPage() {
                           {a.company_staff.department && (
                             <span className="text-blue-400">({a.company_staff.department})</span>
                           )}
-                          <button onClick={() => removeByIdMutation.mutate({ id: a.id })}
+                          <button onClick={() => removeByIdMutation.mutate({ id: Number(a.id) })}
                             className="ml-0.5 rounded-full p-0.5 hover:bg-blue-200/60" title="제거">
                             <X size={10} />
                           </button>
@@ -240,7 +240,7 @@ export default function AssigneesPage() {
                         <span key={a.id}
                           className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
                           {a.company_staff.real_name}
-                          <button onClick={() => removeByIdMutation.mutate({ id: a.id })}
+                          <button onClick={() => removeByIdMutation.mutate({ id: Number(a.id) })}
                             className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-200/60" title="제거">
                             <X size={10} />
                           </button>

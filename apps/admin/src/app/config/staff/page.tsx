@@ -61,7 +61,7 @@ export default function StaffPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (editId) updateMutation.mutate({ id: editId, ...form });
+    if (editId) updateMutation.mutate({ id: Number(editId), ...form });
     else createMutation.mutate(form);
   }
 
@@ -167,7 +167,7 @@ export default function StaffPage() {
                         <Pencil size={14} />
                       </button>
                       <Button size="sm" variant={staff.is_active ? 'ghost' : 'success'}
-                        onClick={() => toggleMutation.mutate({ id: staff.id, isActive: !staff.is_active })}
+                        onClick={() => toggleMutation.mutate({ id: Number(staff.id), isActive: !staff.is_active })}
                         disabled={toggleMutation.isPending}
                         className={staff.is_active ? 'text-red-500 hover:bg-red-50 hover:text-red-600' : ''}>
                         {staff.is_active ? '비활성' : '활성화'}

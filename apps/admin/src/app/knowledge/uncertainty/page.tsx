@@ -148,7 +148,7 @@ export default function UncertaintyPage() {
                       setAnswerText('');
                     }}>답변 등록</Button>
                     <Button size="sm" variant="secondary"
-                      onClick={() => dismissMutation.mutate({ id: item.id })}
+                      onClick={() => dismissMutation.mutate({ id: Number(item.id) })}
                       disabled={dismissMutation.isPending}>무시</Button>
                   </div>
                 )}
@@ -169,7 +169,7 @@ export default function UncertaintyPage() {
                   <div className="flex gap-2">
                     <Button size="sm" variant="success"
                       onClick={() => resolveMutation.mutate({
-                        id: item.id,
+                        id: Number(item.id),
                         question: answerQuestion,
                         answer: answerText,
                         category: item.category || undefined,
