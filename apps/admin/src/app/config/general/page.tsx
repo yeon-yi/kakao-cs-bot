@@ -159,7 +159,7 @@ export default function SettingsPage() {
             <div className="flex gap-2 items-center">
               <Input
                 value={editValues['bot.test_rooms'] ?? testRooms}
-                onChange={(e) => setEditValues(prev => ({ ...prev, 'bot.test_rooms': e.currentTarget.value }))}
+                onChange={(e) => { const v = e.currentTarget.value; setEditValues(prev => ({ ...prev, 'bot.test_rooms': v })); }}
                 placeholder="방이름1, 방이름2, ..."
                 className="flex-1 text-xs font-mono"
               />
@@ -197,7 +197,7 @@ export default function SettingsPage() {
               <Input
                 type="time"
                 value={editValues['operation.start_time'] ?? (values?.['operation.start_time']?.value || '09:50')}
-                onChange={(e) => setEditValues(prev => ({ ...prev, 'operation.start_time': e.currentTarget.value }))}
+                onChange={(e) => { const v = e.currentTarget.value; setEditValues(prev => ({ ...prev, 'operation.start_time': v })); }}
                 className="w-28 text-xs font-mono"
               />
             </div>
@@ -207,7 +207,7 @@ export default function SettingsPage() {
               <Input
                 type="time"
                 value={editValues['operation.end_time'] ?? (values?.['operation.end_time']?.value || '18:30')}
-                onChange={(e) => setEditValues(prev => ({ ...prev, 'operation.end_time': e.currentTarget.value }))}
+                onChange={(e) => { const v = e.currentTarget.value; setEditValues(prev => ({ ...prev, 'operation.end_time': v })); }}
                 className="w-28 text-xs font-mono"
               />
             </div>
