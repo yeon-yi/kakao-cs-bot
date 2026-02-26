@@ -366,10 +366,13 @@ export async function processMessage(c: any): Promise<Response> {
           knowledgeContext, historyContext, combinedMessage,
           toneMirrorInstructions, learnedTone, customerToneForPrompt.honorific,
         );
+        // similarity 0.6 미만 → gpt-4o (complex), 이상 → gpt-4o-mini (simple)
+        const useComplexModel = topSimilarity < 0.6;
         const response = await aiGateway.generate({
           prompt: combinedMessage,
           systemPrompt,
           temperature: 0.3,
+          complexity: useComplexModel ? 'complex' : 'simple',
         });
         responseText = response.text;
         aiModel = response.model;

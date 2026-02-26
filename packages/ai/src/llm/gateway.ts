@@ -441,7 +441,7 @@ ${history ? `최근 대화:\n${history}` : ''}`;
 
   private async callOpenAI(request: LLMRequest, complexity: TaskComplexity, start: number): Promise<LLMResponse> {
     const openai = this.getOpenAI()!;
-    const modelName = 'gpt-4o';
+    const modelName = complexity === 'complex' ? 'gpt-4o' : 'gpt-4o-mini';
 
     const messages: Array<{ role: 'system' | 'user'; content: any }> = [];
     if (request.systemPrompt) messages.push({ role: 'system', content: request.systemPrompt });
