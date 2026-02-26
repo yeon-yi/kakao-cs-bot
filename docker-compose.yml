@@ -12,8 +12,10 @@ services:
     volumes:
       - ./public:/app/public
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
 
   bot:
     build:
@@ -48,6 +50,11 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   n8n:
     image: n8nio/n8n:latest

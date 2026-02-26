@@ -1,7 +1,21 @@
+import { AsyncLocalStorage } from 'async_hooks';
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
+// ===================== Request Context (AsyncLocalStorage) =====================
+const requestStore = new AsyncLocalStorage<{ requestId: string }>();
+
+export function setRequestContext(requestId: string): void {
+  requestStore.enterWith({ requestId });
+}
+
+export function getRequestId(): string | undefined {
+  return requestStore.getStore()?.requestId;
+}
+
+// ===================== Logger =====================
 class Logger {
   private level: LogLevel;
   private context: string;
@@ -17,8 +31,11 @@ class Logger {
 
   private format(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
     const timestamp = new Date().toISOString();
-    const base = JSON.stringify({ timestamp, level, context: this.context, message, ...meta });
-    return base;
+    const requestId = getRequestId();
+    const base: Record<string, unknown> = { timestamp, level, context: this.context, message };
+    if (requestId) base.requestId = requestId;
+    if (meta) Object.assign(base, meta);
+    return JSON.stringify(base);
   }
 
   debug(message: string, meta?: Record<string, unknown>) {

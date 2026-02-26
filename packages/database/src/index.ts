@@ -1,4 +1,4 @@
-export { getPool, query, queryOne, queryCount } from './client';
+export { getPool, query, queryOne, queryCount, withTransaction } from './client';
 export type { Database } from './types';
 export { KnowledgeRepository } from './repositories/knowledge';
 export { ConversationRepository } from './repositories/conversations';

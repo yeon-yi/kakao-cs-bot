@@ -33,3 +33,18 @@ export async function queryCount(text: string, params?: any[]): Promise<number> 
   const result = await pool.query(text, params);
   return parseInt(result.rows[0]?.count ?? '0', 10);
 }
+
+export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
