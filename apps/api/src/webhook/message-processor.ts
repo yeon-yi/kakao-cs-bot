@@ -277,17 +277,18 @@ export async function processMessage(c: any): Promise<Response> {
       isTestMode = true;
     }
 
-    // 0-3. 봇 멘션(@태그) 감지
-    const botName = webhookConfig.botKakaoName;
-    const mentionPatterns = botName
-      ? [botName, `@${botName}`]
+    // 0-3. 봇 멘션(@태그) 감지 (쉼표 구분으로 여러 이름 지원)
+    const botNames = webhookConfig.botKakaoName
+      ? webhookConfig.botKakaoName.split(',').map(n => n.trim()).filter(Boolean)
       : [];
-    const isBotMentioned = mentionPatterns.length > 0 && mentionPatterns.some(p => message.includes(p));
-    // 멘션 텍스트를 제거한 실제 질문 추출
-    let effectiveMessage = message;
-    if (isBotMentioned && botName) {
-      effectiveMessage = message.replace(new RegExp(`@?${botName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '').trim();
-    }
+    let matchedBotName = '';
+    const isBotMentioned = botNames.some(name => {
+      if (message.includes(`@${name}`) || message.includes(name)) {
+        matchedBotName = name;
+        return true;
+      }
+      return false;
+    });
 
     // 0-4. 발신자 직원 여부 자동 감지
     let isStaffSender = false;
@@ -376,8 +377,12 @@ export async function processMessage(c: any): Promise<Response> {
       : message;
 
     // 봇 멘션 시 멘션 텍스트 제거한 실제 질문 사용
-    if (isBotMentioned && botName) {
-      combinedMessage = combinedMessage.replace(new RegExp(`@?${botName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '').trim();
+    if (isBotMentioned && matchedBotName) {
+      for (const name of botNames) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        combinedMessage = combinedMessage.replace(new RegExp(`@?${escaped}`, 'g'), '');
+      }
+      combinedMessage = combinedMessage.trim();
       if (!combinedMessage) combinedMessage = message; // 멘션만 있는 경우 원본 사용
       logger.info('Bot mentioned', { roomId, userName, originalMessage: message, cleanedMessage: combinedMessage });
     }
