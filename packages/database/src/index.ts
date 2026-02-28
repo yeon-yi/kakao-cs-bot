@@ -7,4 +7,3 @@ export { ConfigRepository, PromptRepository, AnalyticsRepository } from './repos
 export { EscalationRepository } from './repositories/escalation';
 export { ProactiveRepository } from './repositories/proactive';
 export { UncertaintyRepository } from './repositories/uncertainty';
-export { migrate } from './migrate';

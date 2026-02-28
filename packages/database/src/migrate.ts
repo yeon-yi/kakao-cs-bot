@@ -69,12 +69,3 @@ export async function migrate() {
   }
 }
 
-// CLI 실행
-if (require.main === module) {
-  migrate()
-    .then(() => process.exit(0))
-    .catch((err) => {
-      console.error('Migration failed:', err);
-      process.exit(1);
-    });
-}
