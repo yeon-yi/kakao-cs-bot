@@ -37,19 +37,8 @@ export function detectCustomerTone(message: string, historyContext: string): Cus
 export function buildToneMirrorInstructions(tone: CustomerToneProfile): string {
   const lines: string[] = [];
 
-  switch (tone.formalityLevel) {
-    case 'casual':
-      lines.push('- 고객이 캐주얼한 말투를 사용하므로 살짝 부드러운 존댓말 (~요 체) 사용 가능');
-      lines.push('- 너무 딱딱하지 않게, 친근하면서도 프로페셔널하게');
-      break;
-    case 'semi-formal':
-      lines.push('- 고객이 반존댓말을 사용하므로 자연스러운 존댓말 (~요 체 위주) 사용');
-      break;
-    default:
-      lines.push('- 격식체 존댓말 (~습니다 체) 사용');
-      break;
-  }
-
+  // 고객 말투와 무관하게 항상 격식체 존댓말 유지 (프로페셔널 CS 대응)
+  lines.push('- 격식체 존댓말 (~습니다 체) 사용. 고객이 반말하더라도 절대 반말이나 ~요 체를 사용하지 마세요');
   lines.push('- 이모지, 이모티콘, 특수기호 사용 금지');
 
   if (tone.messageLength === 'short') {

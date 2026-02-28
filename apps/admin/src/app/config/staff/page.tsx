@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input, FormField } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { UserPlus, Pencil, X } from 'lucide-react';
+import { UserPlus, Pencil, X, Upload } from 'lucide-react';
 
 interface StaffForm {
   realName: string;
@@ -48,6 +48,48 @@ export default function StaffPage() {
     onSuccess: () => utils.staff.list.invalidate(),
   });
 
+  // 엑셀 업로드
+  const [uploadPreview, setUploadPreview] = useState<Array<{ realName: string }>>([]);
+  const [uploadResult, setUploadResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+  const bulkImportMutation = trpc.staff.bulkImport.useMutation({
+    onSuccess: (result) => {
+      setUploadResult(result);
+      setUploadPreview([]);
+      utils.staff.list.invalidate();
+    },
+  });
+
+  async function handleExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      const LOCATIONS = new Set(['안산', '인천', '수원', '동탄', '용인', '부산', '대전', '광주', '대구', '울산', '세종', '서울']);
+      const names = new Set<string>();
+
+      for (let i = 1; i < rows.length; i++) {
+        for (const cell of (rows[i] || [])) {
+          if (!cell || typeof cell !== 'string') continue;
+          const name = cell.trim().replace(/\*$/g, '').trim();
+          if (name.length >= 2 && !LOCATIONS.has(name)) names.add(name);
+        }
+      }
+
+      const list = [...names].sort().map(n => ({ realName: n }));
+      setUploadPreview(list);
+      setUploadResult(null);
+    } catch {
+      alert('엑셀 파일을 읽을 수 없습니다');
+    }
+  }
+
   function startEdit(staff: any) {
     setEditId(staff.id);
     setIsAdding(false);
@@ -80,9 +122,17 @@ export default function StaffPage() {
             </p>
           </div>
           {!isAdding && !editId && (
-            <Button onClick={() => { setIsAdding(true); setEditId(null); setForm(emptyForm); }}>
-              <UserPlus size={16} /> 직원 추가
-            </Button>
+            <div className="flex gap-2">
+              <label className="cursor-pointer">
+                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelUpload} className="hidden" />
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+                  <Upload size={16} /> 엑셀 업로드
+                </span>
+              </label>
+              <Button onClick={() => { setIsAdding(true); setEditId(null); setForm(emptyForm); }}>
+                <UserPlus size={16} /> 직원 추가
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -121,6 +171,41 @@ export default function StaffPage() {
             </div>
           </form>
         </Card>
+      )}
+
+      {/* 엑셀 업로드 미리보기 */}
+      {uploadPreview.length > 0 && (
+        <Card className="mb-5 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-zinc-900">엑셀에서 {uploadPreview.length}명 감지됨 (기존 직원은 자동 건너뜁니다)</h3>
+            <button onClick={() => setUploadPreview([])} className="text-xs text-zinc-400 hover:text-zinc-600">취소</button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 mb-3 max-h-40 overflow-y-auto">
+            {uploadPreview.map((s, i) => (
+              <Badge key={i} variant="outline">{s.realName}</Badge>
+            ))}
+          </div>
+          <Button onClick={() => bulkImportMutation.mutate({ staffList: uploadPreview })}
+            disabled={bulkImportMutation.isPending}>
+            {bulkImportMutation.isPending ? '등록 중...' : `${uploadPreview.length}명 일괄 등록`}
+          </Button>
+        </Card>
+      )}
+
+      {/* 업로드 결과 */}
+      {uploadResult && (
+        <div className="mb-5 rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-emerald-800">
+              신규 등록 {uploadResult.imported}명 / 기존 건너뜀 {uploadResult.skipped}명
+              {uploadResult.errors.length > 0 && ` / 오류 ${uploadResult.errors.length}건`}
+            </span>
+            <button onClick={() => setUploadResult(null)} className="text-emerald-400 hover:text-emerald-600">&times;</button>
+          </div>
+          {uploadResult.errors.length > 0 && (
+            <ul className="mt-2 text-xs text-red-600">{uploadResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+          )}
+        </div>
       )}
 
       <div className="mb-4 flex items-center gap-3">

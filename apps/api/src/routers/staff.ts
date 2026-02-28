@@ -116,4 +116,59 @@ export const staffRouter = router({
       logger.info('Staff toggled', { id: input.id, isActive: input.isActive });
       return data;
     }),
+
+  bulkImport: protectedProcedure
+    .input(z.object({
+      staffList: z.array(z.object({
+        realName: z.string().min(1),
+        kakaoName: z.string().optional(),
+        department: z.string().optional(),
+        position: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+      })).min(1).max(1000),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const staff of input.staffList) {
+        try {
+          // real_name + kakao_name 조합으로 중복 체크
+          const existing = await queryOne(
+            `SELECT id FROM company_staff WHERE real_name = $1 AND is_active = true`,
+            [staff.realName]
+          );
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          await queryOne(
+            `INSERT INTO company_staff (real_name, kakao_name, department, position, email, phone, added_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [
+              staff.realName,
+              staff.kakaoName || staff.realName,
+              staff.department || null,
+              staff.position || null,
+              staff.email || null,
+              staff.phone || null,
+              ctx.userId || 'bulk_import',
+            ]
+          );
+          imported++;
+        } catch (e: any) {
+          if (e.message?.includes('duplicate') || e.message?.includes('unique')) {
+            skipped++;
+          } else {
+            errors.push(`${staff.realName}: ${e.message}`);
+          }
+        }
+      }
+
+      logger.info('Bulk import completed', { imported, skipped, errors: errors.length });
+      return { imported, skipped, errors, total: input.staffList.length };
+    }),
 });

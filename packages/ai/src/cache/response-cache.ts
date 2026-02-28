@@ -59,11 +59,28 @@ export class AIResponseCache {
   async invalidateByPattern(pattern: string): Promise<number> {
     const keys = await this.redis.keys(`ai:response:*`);
     if (keys.length === 0) return 0;
-    // 전체 무효화 (패턴 기반은 비용이 높으므로 TTL에 의존)
     let deleted = 0;
     for (const key of keys.slice(0, 100)) {
       await this.redis.del(key);
       deleted++;
+    }
+    return deleted;
+  }
+
+  /** 전체 응답 캐시 무효화 (SCAN 기반, 지식 변경 시 사용) */
+  async invalidateAll(): Promise<number> {
+    let deleted = 0;
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', 'ai:response:*', 'COUNT', 200);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        deleted += keys.length;
+      }
+    } while (cursor !== '0');
+    if (deleted > 0) {
+      logger.info(`Response cache invalidated: ${deleted} keys deleted`);
     }
     return deleted;
   }

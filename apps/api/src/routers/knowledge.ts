@@ -1,11 +1,17 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { KnowledgeRepository } from '@kakao-cs-bot/database';
-import { embedder } from '@kakao-cs-bot/ai';
+import { embedder, AIResponseCache } from '@kakao-cs-bot/ai';
 import { createLogger } from '@kakao-cs-bot/config';
 
 const logger = createLogger('api:knowledge');
 const knowledgeRepo = new KnowledgeRepository();
+let responseCache: AIResponseCache | null = null;
+
+function getCache(): AIResponseCache {
+  if (!responseCache) responseCache = new AIResponseCache();
+  return responseCache;
+}
 
 export const knowledgeRouter = router({
   search: publicProcedure
@@ -115,6 +121,8 @@ export const knowledgeRouter = router({
       if (updates.notes !== undefined) updateData.notes = updates.notes;
 
       const result = await knowledgeRepo.update(id, updateData as any);
+      // 지식 변경 → 응답 캐시 무효화
+      getCache().invalidateAll().catch(e => logger.warn('Cache invalidation failed', { error: String(e) }));
       return { success: true, id: result.id, message: '지식이 수정되었습니다' };
     }),
 
@@ -122,6 +130,7 @@ export const knowledgeRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       await knowledgeRepo.delete(input.id);
+      getCache().invalidateAll().catch(e => logger.warn('Cache invalidation failed', { error: String(e) }));
       return { success: true, message: '지식이 삭제되었습니다' };
     }),
 
@@ -129,6 +138,7 @@ export const knowledgeRouter = router({
     .input(z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }))
     .mutation(async ({ input }) => {
       await knowledgeRepo.bulkDelete(input.ids);
+      getCache().invalidateAll().catch(e => logger.warn('Cache invalidation failed', { error: String(e) }));
       logger.info('Knowledge bulk deleted', { count: input.ids.length });
       return { success: true, count: input.ids.length };
     }),

@@ -54,6 +54,15 @@ export class IdentityRepository {
     );
   }
 
+  // 다른 방에서 이미 company_staff로 확인된 사용자인지 체크
+  async isKnownStaff(userName: string): Promise<boolean> {
+    const row = await queryOne(
+      `SELECT 1 FROM room_members WHERE user_name = $1 AND role = 'company_staff' AND confidence >= 0.9 LIMIT 1`,
+      [userName]
+    );
+    return !!row;
+  }
+
   async registerStaff(input: { kakao_user_id?: string; kakao_name?: string; real_name: string; email?: string; phone?: string; department?: string; position?: string; added_by?: string }) {
     const row = await queryOne(
       `INSERT INTO company_staff (kakao_user_id, kakao_name, real_name, email, phone, department, position, added_by)

@@ -175,16 +175,28 @@ export function getEscalationMessage(previousEscalationCount: number = 0, roomId
 }
 
 // ===================== AI 카테고리 분류 =====================
-export async function classifyCategory(message: string): Promise<string> {
+export async function classifyCategory(message: string, historyContext?: string): Promise<string> {
   try {
-    const response = await aiGateway.generate({
-      prompt: `다음 질문을 카테고리 하나로 분류하세요. 반드시 아래 중 하나만 출력하세요:
-네이버트래픽, 블로그기자단, 인스타그램, 홈페이지, SEO, 영상촬영, 일반
+    const contextSection = historyContext
+      ? `\n최근 대화 맥락:\n${historyContext.slice(0, 500)}\n`
+      : '';
 
+    const response = await aiGateway.generate({
+      prompt: `고객 질문을 아래 카테고리 중 하나로 분류하세요. 카테고리 이름만 정확히 출력하세요.
+
+카테고리 및 예시:
+- 네이버트래픽: 네이버 검색 유입, 트래픽 순위, 검색 노출, 네이버 광고 성과
+- 블로그기자단: 블로그 포스팅 일정, 기자단 원고, 블로그 리뷰, 체험단
+- 인스타그램: 인스타 팔로워, 릴스, 피드, 인스타 광고, 해시태그
+- 홈페이지: 홈페이지 수정, 웹사이트 제작, 랜딩페이지, 도메인
+- SEO: 구글 검색 순위, SEO 최적화, 검색엔진, 구글 노출
+- 영상촬영: 촬영 일정, 영상 편집, 유튜브, 숏폼, 촬영 장소
+- 일반: 결제, 계약서, 견적, 일반 문의, 위 카테고리에 해당하지 않는 것
+${contextSection}
 질문: "${message}"
 
 카테고리:`,
-      systemPrompt: '카테고리 분류기입니다. 카테고리 이름만 출력하세요.',
+      systemPrompt: '광고 대행사 CS 카테고리 분류기입니다. 위 7개 카테고리 중 하나만 정확히 출력하세요. 설명이나 부연 없이 카테고리 이름만 출력합니다.',
       temperature: 0.1,
       complexity: 'simple',
     });

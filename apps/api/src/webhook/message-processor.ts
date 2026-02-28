@@ -222,23 +222,7 @@ export async function processMessage(c: any): Promise<Response> {
       return c.json({ answer: null, reason: 'skip_pattern' });
     }
 
-    // 0-1. 발신자 직원 여부 자동 감지
-    if (userName) {
-      try {
-        const staffMap = await getStaffNameMap();
-        const staffId = staffMap.get(userName);
-        if (staffId) {
-          await identityRepo.upsertRoomMember(roomId, userName, userName, 'company_staff', 1.0);
-          return c.json({ answer: null, reason: 'staff_message' });
-        } else {
-          await identityRepo.upsertRoomMember(roomId, userName, userName, 'advertiser', 0.5);
-        }
-      } catch (e) {
-        logger.warn('Staff detection failed', { error: String(e) });
-      }
-    }
-
-    // 0-2. 차단된 방 + 설정 배치 로드
+    // 0-1. 차단된 방 + 설정 배치 로드 (직원 감지보다 먼저 - 테스트모드 판별 필요)
     const [isBlocked, webhookConfig] = await Promise.all([
       proactiveRepo.isBlocked(roomId).catch(() => false),
       getWebhookConfig(),
@@ -247,7 +231,7 @@ export async function processMessage(c: any): Promise<Response> {
       return c.json({ answer: null, reason: 'room_blocked' });
     }
 
-    // 0-3. 봇 모드 체크
+    // 0-2. 봇 모드 체크
     if (webhookConfig.botMode === 'off') {
       return c.json({ answer: null, reason: 'bot_disabled' });
     }
@@ -258,6 +242,42 @@ export async function processMessage(c: any): Promise<Response> {
         return c.json({ answer: null, reason: 'test_mode_excluded' });
       }
       isTestMode = true;
+    }
+
+    // 0-3. 발신자 직원 여부 자동 감지 (테스트모드에서는 건너뜀)
+    if (!isTestMode && userName) {
+      try {
+        // 0차: 이 방에서 이미 광고주로 확인된 사용자는 직원 감지 건너뜀
+        const existingMember = await identityRepo.getRoomMember(roomId, userName).catch(() => null);
+        if (existingMember && existingMember.role === 'advertiser' && existingMember.confidence >= 0.9) {
+          // 관리자가 광고주로 확인한 사용자 → 직원 감지 안 함 (이름 충돌 방지)
+        } else {
+          // 1차: company_staff 테이블의 kakao_name 매칭
+          const staffMap = await getStaffNameMap();
+          let isStaff = !!staffMap.get(userName);
+
+          // 2차: staff_aliases 테이블 매칭 (별칭/닉네임 변경 대비)
+          if (!isStaff) {
+            const alias = await identityRepo.findStaffByAlias(userName).catch(() => null);
+            if (alias) isStaff = true;
+          }
+
+          // 3차: 다른 방에서 이미 company_staff로 확인된 사용자
+          if (!isStaff) {
+            const knownStaff = await identityRepo.isKnownStaff(userName).catch(() => false);
+            if (knownStaff) isStaff = true;
+          }
+
+          if (isStaff) {
+            await identityRepo.upsertRoomMember(roomId, userName, userName, 'company_staff', 1.0);
+            return c.json({ answer: null, reason: 'staff_message' });
+          } else {
+            await identityRepo.upsertRoomMember(roomId, userName, userName, 'advertiser', 0.5);
+          }
+        }
+      } catch (e) {
+        logger.warn('Staff detection failed', { error: String(e) });
+      }
     }
 
     // 0-4. 사진/미디어 메시지
@@ -516,7 +536,11 @@ export async function processMessage(c: any): Promise<Response> {
         .join('\n\n');
 
       await loadChainOverrides();
-      const strategy = aiGateway.resolveChainStrategy();
+      const useComplexModel = topSimilarity < 0.6;
+      const strategy = aiGateway.resolveChainStrategy({
+        complexity: useComplexModel ? 'complex' : 'simple',
+        confidence: topSimilarity,
+      });
       let responseText: string;
       let chainStepsJson: any = null;
 
@@ -543,7 +567,6 @@ export async function processMessage(c: any): Promise<Response> {
           toneMirrorInstructions, learnedTone, customerToneForPrompt.honorific, customerProfile,
         );
         // similarity 0.6 미만 → gpt-4o (complex), 이상 → gpt-4o-mini (simple)
-        const useComplexModel = topSimilarity < 0.6;
         const response = await aiGateway.generate({
           prompt: combinedMessage,
           systemPrompt,

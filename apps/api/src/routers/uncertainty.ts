@@ -114,4 +114,63 @@ ${knowledgeContext}
         })),
       };
     }),
+
+  // 빈번한 미해결 주제에 대해 일괄 AI 답변 제안
+  autoSuggest: protectedProcedure
+    .input(z.object({
+      minOccurrence: z.number().min(1).default(3),
+      limit: z.number().min(1).max(10).default(5),
+    }))
+    .mutation(async ({ input }) => {
+      const trending = await uncertaintyRepo.trending(input.limit);
+      const filtered = trending.filter(
+        (t: any) => t.status === 'open' && (t.occurrence_count || 0) >= input.minOccurrence
+      );
+
+      if (filtered.length === 0) {
+        return { suggestions: [], message: '자동 제안할 주제가 없습니다' };
+      }
+
+      const suggestions: Array<{ id: number; topic: string; category: string; occurrenceCount: number; suggestedAnswer: string }> = [];
+
+      for (const topic of filtered) {
+        try {
+          const embedding = await embedder.embed(topic.sample_question || topic.topic);
+          const related = await knowledgeRepo.search(embedding, topic.topic, { limit: 3 });
+          const ctx = related.length > 0
+            ? related.map((k: any) => `Q: ${k.question}\nA: ${k.answer}`).join('\n\n')
+            : '(관련 지식 없음)';
+
+          const response = await aiGateway.generate({
+            prompt: `불확실 주제: "${topic.sample_question || topic.topic}"
+카테고리: ${topic.category || '일반'}
+발생 횟수: ${topic.occurrence_count || 1}회
+
+관련 참고 지식:
+${ctx}
+
+위 주제에 대한 CS 답변 초안을 작성해주세요.
+- 광고 대행사 CS 담당자 관점에서 작성
+- 2~4문장으로 간결하게
+- ~합니다 체 사용
+- 불확실한 부분은 "[확인 필요]"로 표시`,
+            systemPrompt: '광고 대행사 CS 답변 초안 생성기입니다. 답변만 출력하세요.',
+            temperature: 0.3,
+            complexity: 'simple',
+          });
+
+          suggestions.push({
+            id: topic.id,
+            topic: topic.topic,
+            category: topic.category || '일반',
+            occurrenceCount: topic.occurrence_count || 1,
+            suggestedAnswer: response.text.trim(),
+          });
+        } catch {
+          // 개별 실패는 건너뜀
+        }
+      }
+
+      return { suggestions, message: `${suggestions.length}개 주제에 대한 답변이 생성되었습니다` };
+    }),
 });

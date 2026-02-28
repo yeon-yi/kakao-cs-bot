@@ -137,10 +137,28 @@ class AIGateway {
    * 2키 → 2-chain (조합에 따라 역할 자동 배정)
    * 1키 → single (단독)
    */
-  resolveChainStrategy(): ChainStrategy {
+  resolveChainStrategy(options?: { complexity?: TaskComplexity; confidence?: number }): ChainStrategy {
+    const complexity = options?.complexity || 'complex';
+    const confidence = options?.confidence ?? 0;
+
+    // 비용 최적화: 간단한 질문은 체인 단계 축소
+    if (complexity === 'simple' && confidence >= 0.7) {
+      // 높은 신뢰도 + 단순 질문 → 항상 single (비용 절감)
+      const available = this.getAvailableProviders();
+      return {
+        mode: 'single',
+        steps: [{ role: 'responder', provider: available[0] || 'openai', temperature: 0.3 }],
+      };
+    }
+
     const now = Date.now();
     if (this.cachedStrategy && now - this.cachedStrategy.loadedAt < this.STRATEGY_CACHE_TTL) {
-      return this.cachedStrategy.strategy;
+      const cached = this.cachedStrategy.strategy;
+      // 간단한 질문은 최대 2-chain으로 제한
+      if (complexity === 'simple' && cached.mode === '3-chain') {
+        return { mode: '2-chain', steps: cached.steps.slice(0, 2) };
+      }
+      return cached;
     }
 
     const available = this.getAvailableProviders();
@@ -153,6 +171,11 @@ class AIGateway {
     } else {
       // 자동 결정
       strategy = this.buildAutoStrategy(available);
+    }
+
+    // 간단한 질문은 최대 2-chain으로 제한
+    if (complexity === 'simple' && strategy.mode === '3-chain') {
+      strategy = { mode: '2-chain', steps: strategy.steps.slice(0, 2) };
     }
 
     // 개별 역할 수동 오버라이드 적용

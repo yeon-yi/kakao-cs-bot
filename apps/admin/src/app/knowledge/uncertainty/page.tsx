@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { AlertTriangle, CheckCircle2, X, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X, TrendingUp, Sparkles } from 'lucide-react';
 
 const STATUS_TABS = [
   { value: 'open' as const, label: '미해결' },
@@ -59,6 +59,24 @@ export default function UncertaintyPage() {
     onError: (err) => setErrorMsg(`무시 처리 실패: ${err.message}`),
   });
 
+  const [suggestions, setSuggestions] = useState<Array<{ id: number; topic: string; category: string; occurrenceCount: number; suggestedAnswer: string }>>([]);
+  const autoSuggestMutation = trpc.uncertainty.autoSuggest.useMutation({
+    onSuccess: (result) => {
+      setSuggestions(result.suggestions);
+      if (result.suggestions.length === 0) {
+        setErrorMsg('3회 이상 발생한 미해결 주제가 없습니다');
+      }
+    },
+    onError: (err) => setErrorMsg(`AI 제안 실패: ${err.message}`),
+  });
+
+  const suggestAnswerMutation = trpc.uncertainty.suggestAnswer.useMutation({
+    onSuccess: (result) => {
+      setAnswerText(result.suggestedAnswer);
+    },
+    onError: (err) => setErrorMsg(`AI 추천 실패: ${err.message}`),
+  });
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
@@ -93,19 +111,57 @@ export default function UncertaintyPage() {
         </div>
       )}
 
-      {/* 상태 탭 */}
-      <div className="flex gap-1 mb-5 border-b border-zinc-200">
-        {STATUS_TABS.map((tab) => (
-          <button key={tab.value} onClick={() => { setStatusFilter(tab.value); setOffset(0); setAnsweringId(null); setAnswerText(''); setAnswerQuestion(''); setErrorMsg(null); }}
-            className={`px-3 py-2.5 text-sm border-b-2 transition-colors -mb-px ${
-              statusFilter === tab.value
-                ? 'border-blue-600 text-blue-600 font-medium'
-                : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}>
-            {tab.label}
-          </button>
-        ))}
+      {/* 상태 탭 + AI 자동 제안 */}
+      <div className="flex items-center justify-between mb-5 border-b border-zinc-200">
+        <div className="flex gap-1">
+          {STATUS_TABS.map((tab) => (
+            <button key={tab.value} onClick={() => { setStatusFilter(tab.value); setOffset(0); setAnsweringId(null); setAnswerText(''); setAnswerQuestion(''); setErrorMsg(null); setSuggestions([]); }}
+              className={`px-3 py-2.5 text-sm border-b-2 transition-colors -mb-px ${
+                statusFilter === tab.value
+                  ? 'border-blue-600 text-blue-600 font-medium'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {statusFilter === 'open' && (
+          <Button size="sm" variant="outline"
+            onClick={() => autoSuggestMutation.mutate({ minOccurrence: 3, limit: 5 })}
+            disabled={autoSuggestMutation.isPending}
+            className="-mb-px">
+            <Sparkles size={14} className="mr-1" />
+            {autoSuggestMutation.isPending ? 'AI 분석중...' : 'AI 자동 제안'}
+          </Button>
+        )}
       </div>
+
+      {/* AI 자동 제안 결과 */}
+      {suggestions.length > 0 && (
+        <div className="mb-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-zinc-700">AI 추천 답변 ({suggestions.length}건)</h3>
+            <button onClick={() => setSuggestions([])} className="text-xs text-zinc-400 hover:text-zinc-600">닫기</button>
+          </div>
+          {suggestions.map((s) => (
+            <Card key={s.id} className="p-3 border-blue-100 bg-blue-50/30">
+              <p className="text-xs text-zinc-500 mb-1">{s.topic} ({s.occurrenceCount}회)</p>
+              <p className="text-sm text-zinc-700 mb-2">{s.suggestedAnswer}</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="success"
+                  onClick={() => {
+                    setAnsweringId(s.id);
+                    setAnswerQuestion(s.topic);
+                    setAnswerText(s.suggestedAnswer);
+                    setSuggestions(prev => prev.filter(x => x.id !== s.id));
+                  }}>검토 후 등록</Button>
+                <Button size="sm" variant="secondary"
+                  onClick={() => setSuggestions(prev => prev.filter(x => x.id !== s.id))}>건너뛰기</Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
@@ -147,6 +203,15 @@ export default function UncertaintyPage() {
                       setAnswerQuestion(item.sample_question || item.topic);
                       setAnswerText('');
                     }}>답변 등록</Button>
+                    <Button size="sm" variant="outline"
+                      onClick={() => {
+                        setAnsweringId(item.id);
+                        setAnswerQuestion(item.sample_question || item.topic);
+                        suggestAnswerMutation.mutate({ id: Number(item.id) });
+                      }}
+                      disabled={suggestAnswerMutation.isPending}>
+                      <Sparkles size={12} className="mr-0.5" />AI 추천
+                    </Button>
                     <Button size="sm" variant="secondary"
                       onClick={() => dismissMutation.mutate({ id: Number(item.id) })}
                       disabled={dismissMutation.isPending}>무시</Button>

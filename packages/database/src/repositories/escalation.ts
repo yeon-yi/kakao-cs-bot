@@ -154,10 +154,29 @@ export class EscalationRepository {
     );
   }
 
-  // 하위호환: 단일 담당자 반환 (랜덤 선택)
+  // 단일 담당자 반환 (로드 밸런싱: active escalation이 가장 적은 담당자)
   async getAssigneeByCategory(category: string, roomId?: string) {
     const assignees = await this.getAssigneesByCategory(category, roomId);
     if (assignees.length === 0) return null;
-    return assignees[Math.floor(Math.random() * assignees.length)];
+    if (assignees.length === 1) return assignees[0];
+
+    // 각 담당자의 미해결 에스컬레이션 수 조회
+    const staffIds = assignees.map((a: any) => a.staff_id);
+    const counts = await query(
+      `SELECT assigned_to, COUNT(*) as active_count
+       FROM escalations
+       WHERE assigned_to = ANY($1) AND status IN ('pending', 'assigned')
+       GROUP BY assigned_to`,
+      [staffIds]
+    );
+    const countMap = new Map((counts as any[]).map(c => [c.assigned_to, Number(c.active_count)]));
+
+    // active count가 가장 적은 담당자 선택
+    assignees.sort((a: any, b: any) => {
+      const countA = countMap.get(a.staff_id) || 0;
+      const countB = countMap.get(b.staff_id) || 0;
+      return countA - countB;
+    });
+    return assignees[0];
   }
 }
