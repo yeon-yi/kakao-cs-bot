@@ -115,7 +115,10 @@ export class Humanizer {
     result = result.replace(/~+/g, '');
 
     // "네, 대표님" → "네 대표님" (콤마+호칭 패턴)
-    result = result.replace(/([네아예])([,，])\s*(대표님|담당자님|선생님)/g, '$1 $3');
+    result = result.replace(/([가-힣])([,，])\s*(대표님|담당자님|선생님|광고주님)/g, '$1 $3');
+
+    // "고객님" → "대표님" (AI가 자주 생성하는 패턴)
+    result = result.replace(/고객님/g, '대표님');
 
     // 과도한 캐주얼 표현 제거
     result = result.replace(/습니당|해용|~~|ㅋㅋ+|ㅎㅎ+|\^\^/g, '');
@@ -283,15 +286,19 @@ export class Humanizer {
 
   // ===================== 메시지 분할 =====================
 
-  splitIntoMessages(text: string): { text: string; delay: number }[] {
+  splitIntoMessages(text: string, customerMsgLength?: 'short' | 'medium' | 'long'): { text: string; delay: number }[] {
     // 짧은 메시지는 분할하지 않음
     if (text.length < 80) return [{ text, delay: 0 }];
 
     const sentences = text.split(/(?<=[.!?])\s+/);
     if (sentences.length <= 1) return [{ text, delay: 0 }];
 
-    // 길이에 따른 분할 확률: 짧으면 40%, 길면 70%
-    const splitProb = text.length < 150 ? 0.4 : text.length < 250 ? 0.55 : 0.7;
+    // 고객 성향에 따른 분할 확률 조정
+    // - 짧은 메시지 선호 고객: 분할 확률 높임 (작은 덩어리로)
+    // - 긴 메시지 보내는 고객: 분할 확률 낮춤 (한 번에 보내기)
+    const lengthBonus = customerMsgLength === 'short' ? 0.2 : customerMsgLength === 'long' ? -0.15 : 0;
+    const baseSplitProb = text.length < 150 ? 0.4 : text.length < 250 ? 0.55 : 0.7;
+    const splitProb = Math.max(0.1, Math.min(0.9, baseSplitProb + lengthBonus));
     if (Math.random() > splitProb) return [{ text, delay: 0 }];
 
     // 자연스러운 분할점 패턴 (우선순위 순)
@@ -305,6 +312,9 @@ export class Humanizer {
       }
     }
 
+    // 분할 간 딜레이 (고객이 짧은 메시지 선호하면 딜레이도 짧게)
+    const delayMultiplier = customerMsgLength === 'short' ? 0.7 : customerMsgLength === 'long' ? 1.3 : 1.0;
+
     // 분할점이 있으면 첫 번째 자연 분할점 사용
     if (breakpoints.length > 0) {
       const bp = breakpoints[0];
@@ -314,14 +324,14 @@ export class Humanizer {
         const bp2 = breakpoints[1];
         return [
           { text: sentences.slice(0, bp).join(' '), delay: 0 },
-          { text: sentences.slice(bp, bp2).join(' '), delay: 1200 + Math.random() * 1800 },
-          { text: sentences.slice(bp2).join(' '), delay: 1000 + Math.random() * 1500 },
+          { text: sentences.slice(bp, bp2).join(' '), delay: (1200 + Math.random() * 1800) * delayMultiplier },
+          { text: sentences.slice(bp2).join(' '), delay: (1000 + Math.random() * 1500) * delayMultiplier },
         ];
       }
 
       return [
         { text: sentences.slice(0, bp).join(' '), delay: 0 },
-        { text: sentences.slice(bp).join(' '), delay: 1200 + Math.random() * 2000 },
+        { text: sentences.slice(bp).join(' '), delay: (1200 + Math.random() * 2000) * delayMultiplier },
       ];
     }
 
@@ -330,7 +340,7 @@ export class Humanizer {
       const mid = Math.floor(sentences.length / 2);
       return [
         { text: sentences.slice(0, mid).join(' '), delay: 0 },
-        { text: sentences.slice(mid).join(' '), delay: 1500 + Math.random() * 2000 },
+        { text: sentences.slice(mid).join(' '), delay: (1500 + Math.random() * 2000) * delayMultiplier },
       ];
     }
 

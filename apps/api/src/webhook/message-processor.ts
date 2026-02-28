@@ -20,7 +20,7 @@ import {
   isOperatingHoursFromConfig, getStaffNameMap,
   getLearnedToneProfile, getSystemPrompt, loadChainOverrides,
 } from './config-cache';
-import { detectCustomerTone, buildToneMirrorInstructions, updateCustomerProfile } from './tone-analyzer';
+import { detectCustomerTone, buildToneMirrorInstructions, updateCustomerProfile, getCustomerProfile } from './tone-analyzer';
 import {
   createEscalation, getEscalationMessage,
   classifyCategory, recordUncertainty,
@@ -59,6 +59,62 @@ export async function getConversationHistory(roomId: string, userName: string): 
       if (h.user_message) lines.push(`[고객] ${h.user_message}`);
       if (h.bot_response) lines.push(`[나] ${h.bot_response}`);
       if (lines.length > 0) parts.push(lines.join('\n'));
+    }
+
+    // 반복 패턴 감지: 이전 응답들에서 중복되는 표현 추출
+    const recentResponses = recentItems
+      .map((h: any) => h.bot_response || '')
+      .filter((r: string) => r.length > 0);
+    const warnings: string[] = [];
+
+    // 인사 중복 감지 (다양한 인사 변형 포함)
+    const alreadyGreeted = recentResponses.some((r: string) =>
+      /^(안녕하세요|안녕하세요\s)/.test(r.trim()) || /안녕하세요\s*(대표님|담당자님)/.test(r)
+    );
+    if (alreadyGreeted) {
+      warnings.push('[주의] 이 대화에서 이미 인사했음 → 인사("안녕하세요") 생략하고 바로 본론');
+    }
+
+    // 반복 표현 감지 (확장된 패턴)
+    const phraseCounts = new Map<string, number>();
+    for (const r of recentResponses) {
+      const phrases = [
+        /감사합니다/.test(r) ? '감사합니다' : null,
+        /확인.*안내|안내.*드리겠/.test(r) ? '확인 후 안내' : null,
+        /담당자.*바쁜|담당자.*실무|담당자.*미팅/.test(r) ? '담당자 바쁨 언급' : null,
+        /톡방.*남겨|전달.*확인|남겨.*주시면/.test(r) ? '톡방에 남겨달라는 요청' : null,
+        /죄송|불편.*드려/.test(r) ? '사과 표현' : null,
+        /빠르게.*처리|신속.*처리|바로.*확인/.test(r) ? '빠른 처리 약속' : null,
+        /구체적.*말씀|어떤.*부분|문제.*말씀/.test(r) ? '되묻기' : null,
+      ].filter(Boolean) as string[];
+      for (const p of phrases) {
+        phraseCounts.set(p, (phraseCounts.get(p) || 0) + 1);
+      }
+    }
+    for (const [phrase, count] of phraseCounts) {
+      if (count >= 2) {
+        warnings.push(`[주의] "${phrase}"을(를) 이미 ${count}회 사용함 → 같은 표현 반복 금지, 다른 방식으로 표현`);
+      }
+    }
+
+    // 연속 응답 텍스트 유사도 체크 (단어 겹침 기반)
+    if (recentResponses.length >= 2) {
+      const last = recentResponses[recentResponses.length - 1];
+      const prev = recentResponses[recentResponses.length - 2];
+      const lastWords = new Set(last.split(/\s+/).filter((w: string) => w.length > 1));
+      const prevWords = new Set(prev.split(/\s+/).filter((w: string) => w.length > 1));
+      if (lastWords.size > 0 && prevWords.size > 0) {
+        let overlap = 0;
+        for (const w of lastWords) { if (prevWords.has(w)) overlap++; }
+        const similarity = overlap / Math.max(lastWords.size, prevWords.size);
+        if (similarity > 0.6) {
+          warnings.push(`[주의] 직전 두 응답이 ${Math.round(similarity * 100)}% 유사함 → 반드시 다른 표현과 구조로 답변`);
+        }
+      }
+    }
+
+    if (warnings.length > 0) {
+      parts.push(warnings.join('\n'));
     }
 
     return parts.join('\n\n');
@@ -270,6 +326,7 @@ export async function processMessage(c: any): Promise<Response> {
     let fromCache = false;
 
     const historyContext = await getConversationHistory(roomId, userName || 'unknown');
+    const customerProfile = await getCustomerProfile(roomId).catch(() => null);
 
     // 캐시 조회
     if (!needsEscalation) {
@@ -333,59 +390,129 @@ export async function processMessage(c: any): Promise<Response> {
         }
       }
 
-      // 4a-2. 연속 에스컬레이션 감지 → 3회 이상이면 무응답
-      const recentHistory = await conversationRepo.getHistory(roomId, userName || 'unknown', 5).catch(() => []);
+      // 4a-2. 연속 에스컬레이션 감지 → 학습된 지식으로 응답 시도
+      const recentHistory = await conversationRepo.getHistory(roomId, userName || 'unknown', 10).catch(() => []);
       const recentEscCount = (recentHistory || []).filter((c: any) =>
         c.bot_response && /확인.*안내|담당자.*확인|잠시만.*기다려|확인 중/.test(c.bot_response)
       ).length;
 
       if (recentEscCount >= 4) {
-        // 4회 이상 연속 에스컬레이션 → 에스컬레이션 생성만 하고 무응답
-        await createEscalation({
-          roomId, userName: userName || 'unknown',
-          message: combinedMessage, answer: '',
-          confidence: topSimilarity, conversationId: null,
-          escalationType: 'low_confidence', includeContext: true,
+        // 학습된 Tier 1 지식에서 유사 답변 검색 (embedding은 Step 3에서 이미 생성됨)
+        const learnedKnowledge = await knowledgeRepo.search(embedding, combinedMessage, {
+          tier: 1,
+          limit: 3,
         });
-        logger.info('Consecutive escalation suppressed', { roomId, count: recentEscCount });
-        return c.json({ answer: null, reason: 'consecutive_escalation' });
+
+        if (learnedKnowledge.length > 0 && learnedKnowledge[0].similarity >= 0.35) {
+          // 학습된 지식을 컨텍스트로 AI 응답 생성 (신뢰도 표시)
+          const lkContext = learnedKnowledge
+            .map(k => {
+              const sim = k.similarity ?? 0;
+              const confidence = sim >= 0.8 ? '[정확도: 높음]' : sim >= 0.6 ? '[정확도: 보통]' : '[정확도: 낮음 - 참고만]';
+              return `${confidence}\nQ: ${k.question}\nA: ${k.answer}`;
+            })
+            .join('\n\n');
+
+          const customerTone = detectCustomerTone(combinedMessage, historyContext);
+          const toneMirror = buildToneMirrorInstructions(customerTone);
+          const learnedTone = await getLearnedToneProfile();
+          const lkSystemPrompt = await getSystemPrompt(
+            lkContext, historyContext, combinedMessage,
+            toneMirror, learnedTone, customerTone.honorific, customerProfile,
+          );
+
+          const lkResponse = await aiGateway.generate({
+            prompt: combinedMessage,
+            systemPrompt: lkSystemPrompt,
+            temperature: 0.3,
+            complexity: 'complex',
+          });
+
+          const isThankYouLk = /감사|고마|ㄱㅅ/.test(combinedMessage);
+          answer = humanizer.humanizeResponse(lkResponse.text, {
+            isThankYou: isThankYouLk,
+            customerMessage: combinedMessage,
+            hasHistory: historyContext.length > 0,
+            customerFormality: customerTone.formalityLevel,
+          });
+
+          answer += SOFT_ESCALATION_SUFFIXES[Math.floor(Math.random() * SOFT_ESCALATION_SUFFIXES.length)];
+          escalated = true;
+
+          const lkConversation = await conversationRepo.create({
+            room_id: roomId,
+            user_id: userName || 'unknown',
+            user_name: userName,
+            user_message: combinedMessage,
+            bot_response: answer,
+            context: { isGroupChat, learnedFallback: true },
+            knowledge_tier: learnedKnowledge[0].tier,
+            ai_model: lkResponse.model,
+            confidence: learnedKnowledge[0].similarity,
+            response_time_ms: Date.now() - startTime,
+          });
+          conversationId = lkConversation?.id;
+
+          await knowledgeRepo.incrementUsage(learnedKnowledge[0].id).catch(() => {});
+
+          await createEscalation({
+            roomId, userName: userName || 'unknown',
+            message: combinedMessage, answer,
+            confidence: learnedKnowledge[0].similarity,
+            conversationId: lkConversation?.id,
+            escalationType: 'soft',
+            includeContext: false,
+          });
+
+          logger.info('Learned fallback response', {
+            roomId, userName,
+            similarity: learnedKnowledge[0].similarity,
+            knowledgeId: learnedKnowledge[0].id,
+            escCount: recentEscCount,
+          });
+        }
       }
 
-      // 4a-3. 에스컬레이션 응답 (횟수에 따라 다른 템플릿)
-      answer = humanizer.humanizeResponse(getEscalationMessage(recentEscCount), { isThankYou: false });
-      escalated = true;
+      // 4a-3. 에스컬레이션 응답 (학습 폴백이 없었을 때)
+      if (!answer) {
+        answer = humanizer.humanizeResponse(getEscalationMessage(recentEscCount, roomId), { isThankYou: false });
+        escalated = true;
 
-      const conversation = await conversationRepo.create({
-        room_id: roomId,
-        user_id: userName || 'unknown',
-        user_name: userName,
-        user_message: combinedMessage,
-        bot_response: answer,
-        context: { isGroupChat },
-        knowledge_tier: null,
-        ai_model: null,
-        confidence: topSimilarity,
-        response_time_ms: Date.now() - startTime,
-      });
-      conversationId = conversation?.id;
+        const conversation = await conversationRepo.create({
+          room_id: roomId,
+          user_id: userName || 'unknown',
+          user_name: userName,
+          user_message: combinedMessage,
+          bot_response: answer,
+          context: { isGroupChat },
+          knowledge_tier: null,
+          ai_model: null,
+          confidence: topSimilarity,
+          response_time_ms: Date.now() - startTime,
+        });
+        conversationId = conversation?.id;
 
-      // 통합 에스컬레이션 생성 (컨텍스트 포함)
-      await createEscalation({
-        roomId, userName: userName || 'unknown',
-        message: combinedMessage, answer,
-        confidence: topSimilarity,
-        conversationId: conversation?.id,
-        escalationType: 'low_confidence',
-        includeContext: true,
-      });
+        await createEscalation({
+          roomId, userName: userName || 'unknown',
+          message: combinedMessage, answer,
+          confidence: topSimilarity,
+          conversationId: conversation?.id,
+          escalationType: 'low_confidence',
+          includeContext: true,
+        });
 
-      await recordUncertainty(combinedMessage, '일반', topSimilarity).catch(() => {});
+        await recordUncertainty(combinedMessage, '일반', topSimilarity).catch(() => {});
 
-      logger.info('Escalation created', { roomId, userName, similarity: topSimilarity, threshold, escCount: recentEscCount });
+        logger.info('Escalation created', { roomId, userName, similarity: topSimilarity, threshold, escCount: recentEscCount });
+      }
     } else {
-      // 4b. 정상 응답
+      // 4b. 정상 응답 - 지식 컨텍스트에 신뢰도 표시
       const knowledgeContext = knowledge
-        .map(k => `Q: ${k.question}\nA: ${k.answer}`)
+        .map(k => {
+          const sim = k.similarity ?? 0;
+          const confidence = sim >= 0.8 ? '[정확도: 높음]' : sim >= 0.6 ? '[정확도: 보통]' : '[정확도: 낮음 - 참고만]';
+          return `${confidence}\nQ: ${k.question}\nA: ${k.answer}`;
+        })
         .join('\n\n');
 
       await loadChainOverrides();
@@ -413,7 +540,7 @@ export async function processMessage(c: any): Promise<Response> {
         const learnedTone = await getLearnedToneProfile();
         const systemPrompt = await getSystemPrompt(
           knowledgeContext, historyContext, combinedMessage,
-          toneMirrorInstructions, learnedTone, customerToneForPrompt.honorific,
+          toneMirrorInstructions, learnedTone, customerToneForPrompt.honorific, customerProfile,
         );
         // similarity 0.6 미만 → gpt-4o (complex), 이상 → gpt-4o-mini (simple)
         const useComplexModel = topSimilarity < 0.6;
@@ -474,13 +601,12 @@ export async function processMessage(c: any): Promise<Response> {
       });
       conversationId = conversation?.id;
 
-      // 캐시 저장 (soft-escalation 제외)
-      if (!isSoftEscalation) {
-        try {
-          await getResponseCache().set(combinedMessage, answer, topSimilarity, aiModel || 'unknown');
-        } catch (e) {
-          logger.warn('Cache set failed', { error: String(e) });
-        }
+      // 캐시 저장 (soft-escalation은 짧은 TTL로 캐시)
+      try {
+        const cacheConfidence = isSoftEscalation ? Math.min(topSimilarity, 0.5) : topSimilarity;
+        await getResponseCache().set(combinedMessage, answer, cacheConfidence, aiModel || 'unknown');
+      } catch (e) {
+        logger.warn('Cache set failed', { error: String(e) });
       }
 
       // Soft-escalation 레코드 생성
@@ -530,9 +656,13 @@ export async function processMessage(c: any): Promise<Response> {
     const detectedTone = detectCustomerTone(combinedMessage, historyContext);
     updateCustomerProfile(roomId, detectedTone).catch(() => {});
 
-    // 7. 응답 반환
-    const delay = humanizer.getResponseDelay();
-    const messages = humanizer.splitIntoMessages(answer);
+    // 7. 응답 반환 (딜레이: 고객 메시지 읽기 + 응답 작성 시간 시뮬레이션)
+    const baseDelay = humanizer.getResponseDelay();
+    const readingTime = Math.min(combinedMessage.length * 50, 5000); // 고객 메시지 읽기 시간 (최대 5초)
+    const typingTime = Math.min(answer.length * 30, 10000); // 응답 타이핑 시간 (최대 10초)
+    const delay = Math.max(baseDelay, readingTime + typingTime);
+    const customerMsgLength = (customerProfile?.avgMessageLength as 'short' | 'medium' | 'long') || undefined;
+    const messages = humanizer.splitIntoMessages(answer, customerMsgLength);
 
     return c.json({
       answer: messages[0]?.text || answer,

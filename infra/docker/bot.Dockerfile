@@ -44,10 +44,11 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=botuser:nodejs /app/dist/worker.js ./worker.js
 COPY --from=deps --chown=botuser:nodejs /app/node_modules ./node_modules
 COPY --from=deps --chown=botuser:nodejs /app/package.json ./package.json
+COPY --chown=botuser:nodejs infra/docker/healthcheck-bot.js ./healthcheck.js
 
 USER botuser
 
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD node -e "process.exit(0)" || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD node healthcheck.js || exit 1
 
 CMD ["node", "worker.js"]

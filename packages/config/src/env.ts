@@ -39,11 +39,11 @@ const envSchema = z.object({
   KAKAO_OS_VERSION: z.string().default('13'),
   KAKAO_OAUTH_TOKEN: z.string().optional(),
 
-  JWT_SECRET: z.string().min(32).default('dev-secret-key-must-be-at-least-32-chars'),
-  ENCRYPTION_KEY: z.string().default('MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='),
+  JWT_SECRET: z.string().min(32),
+  ENCRYPTION_KEY: z.string().min(1),
 
   NEXTAUTH_URL: z.string().default('http://localhost:3001'),
-  NEXTAUTH_SECRET: z.string().default('dev-nextauth-secret'),
+  NEXTAUTH_SECRET: z.string().min(1),
 
   OPERATION_START_TIME: z.string().default('09:50'),
   OPERATION_END_TIME: z.string().default('18:30'),
@@ -51,10 +51,10 @@ const envSchema = z.object({
   MIN_RESPONSE_DELAY: z.coerce.number().default(2000),
   MAX_RESPONSE_DELAY: z.coerce.number().default(8000),
 
-  ADMIN_PASSWORD: z.string().min(4).default('admin1616@'),
-  ADMIN_AUTO_LOGIN_KEY: z.string().min(4).default('csbot2026!admin'),
+  ADMIN_PASSWORD: z.string().min(4),
+  ADMIN_AUTO_LOGIN_KEY: z.string().min(4),
 
-  WEBHOOK_SECRET: z.string().default('csbot-webhook-2026!secret'),
+  WEBHOOK_SECRET: z.string().min(1),
 
   DD_API_KEY: z.string().optional(),
   SENTRY_DSN: z.string().optional(),
@@ -89,7 +89,7 @@ export function getEnv(): Env {
 
 export function maskSensitive(env: Env): Record<string, string> {
   const masked: Record<string, string> = {};
-  const sensitiveKeys = ['DATABASE_URL','GEMINI_API_KEY','ANTHROPIC_API_KEY','OPENAI_API_KEY','JWT_SECRET','ENCRYPTION_KEY','DD_API_KEY','NEXTAUTH_SECRET'];
+  const sensitiveKeys = ['DATABASE_URL','GEMINI_API_KEY','ANTHROPIC_API_KEY','OPENAI_API_KEY','JWT_SECRET','ENCRYPTION_KEY','DD_API_KEY','NEXTAUTH_SECRET','ADMIN_PASSWORD','ADMIN_AUTO_LOGIN_KEY','WEBHOOK_SECRET'];
 
   for (const [key, value] of Object.entries(env)) {
     if (sensitiveKeys.includes(key) && typeof value === 'string' && value.length > 10) {

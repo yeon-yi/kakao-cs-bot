@@ -14,21 +14,15 @@ const proactiveRepo = new ProactiveRepository();
 
 export const webhookApp = new Hono();
 
-// ===================== API Key 검증 (timing-safe) =====================
+// ===================== API Key 검증 (timing-safe, 헤더만 허용) =====================
 webhookApp.use('*', async (c, next) => {
-  const apiKey = c.req.header('X-Webhook-Secret') || c.req.header('X-API-Key') || c.req.query('key');
+  const apiKey = c.req.header('X-Webhook-Secret') || c.req.header('X-API-Key');
   const secret = getEnv().WEBHOOK_SECRET;
 
   if (!secret || !apiKey) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  // query string 사용 시 deprecation 경고
-  if (!c.req.header('X-Webhook-Secret') && !c.req.header('X-API-Key') && c.req.query('key')) {
-    logger.warn('Deprecated: API key via query string. Use X-Webhook-Secret header instead.');
-  }
-
-  // Timing-safe comparison
   try {
     const keyBuf = Buffer.from(apiKey, 'utf8');
     const secretBuf = Buffer.from(secret, 'utf8');

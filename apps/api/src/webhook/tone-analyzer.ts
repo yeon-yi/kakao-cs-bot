@@ -50,11 +50,7 @@ export function buildToneMirrorInstructions(tone: CustomerToneProfile): string {
       break;
   }
 
-  if (tone.usesEmoji) {
-    lines.push('- 고객이 이모지를 사용하므로, 적절한 곳에 이모지 1~2개 가볍게 활용 가능');
-  } else {
-    lines.push('- 이모지 사용 자제');
-  }
+  lines.push('- 이모지, 이모티콘, 특수기호 사용 금지');
 
   if (tone.messageLength === 'short') {
     lines.push('- 고객이 짧은 메시지를 선호하므로 1~2문장으로 간결하게 답변');

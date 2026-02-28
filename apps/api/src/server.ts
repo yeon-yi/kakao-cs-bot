@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -10,9 +11,20 @@ import { webhookApp, disconnectRedis, disconnectResponseCache } from './webhook'
 import { randomUUID } from 'crypto';
 import { setRequestContext, getRequestId } from '@kakao-cs-bot/config';
 import Redis from 'ioredis';
+import { apiLimiter, webhookLimiter } from './middleware/rate-limit';
 
 const env = loadEnv();
 const logger = createLogger('api:server');
+
+// ===================== Sentry 초기화 =====================
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    environment: env.NODE_ENV,
+    tracesSampleRate: env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  });
+  logger.info('Sentry initialized');
+}
 
 const app = new Hono();
 
@@ -31,12 +43,16 @@ const allowedOrigins = env.CORS_ORIGIN
 
 app.use('*', cors({
   origin: (origin) => {
-    if (env.NODE_ENV === 'development') return origin || allowedOrigins[0];
-    if (!origin) return allowedOrigins[0];
-    return allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+    if (!origin) return allowedOrigins[0]; // 서버간 호출 허용
+    if (allowedOrigins.includes(origin)) return origin;
+    return allowedOrigins[0];
   },
   credentials: true,
 }));
+
+// ===================== Rate Limiting =====================
+app.use('/trpc/*', apiLimiter);
+app.use('/webhook/*', webhookLimiter);
 
 // ===================== Health Check (DB + Redis) =====================
 app.get('/health', async (c) => {
@@ -73,6 +89,7 @@ app.onError((err, c) => {
     logger.warn('AppError', { code: err.code, message: err.message, statusCode: err.statusCode, requestId });
     return c.json({ error: err.message, code: err.code, requestId }, err.statusCode as any);
   }
+  Sentry.captureException(err, { extra: { requestId, path: c.req.path } });
   logger.error('Unhandled error', { error: String(err), stack: (err as Error).stack, requestId });
   return c.json({ error: 'Internal server error', requestId }, 500);
 });
@@ -169,6 +186,9 @@ async function gracefulShutdown(signal: string) {
     // 3. DB 풀 종료
     await getPool().end();
     logger.info('Database pool closed');
+
+    // 4. Sentry 이벤트 전송 완료 대기
+    await Sentry.close(2000);
 
     logger.info('Graceful shutdown complete');
     process.exit(0);

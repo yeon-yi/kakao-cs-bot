@@ -9,7 +9,7 @@ class Prefs(context: Context) {
         context.getSharedPreferences("csbot_prefs", Context.MODE_PRIVATE)
 
     var botEnabled: Boolean
-        get() = sp.getBoolean("bot_enabled", true)
+        get() = sp.getBoolean("bot_enabled", false)
         set(v) = sp.edit().putBoolean("bot_enabled", v).apply()
 
     var apiUrl: String

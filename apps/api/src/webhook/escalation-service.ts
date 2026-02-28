@@ -152,9 +152,26 @@ export async function createEscalation(params: CreateEscalationParams): Promise<
 }
 
 // ===================== 에스컬레이션 메시지 =====================
-export function getEscalationMessage(previousEscalationCount: number = 0): string {
+const recentEscMessages = new Map<string, string[]>(); // roomId → 최근 사용 메시지
+
+export function getEscalationMessage(previousEscalationCount: number = 0, roomId?: string): string {
   const templates = previousEscalationCount >= 1 ? FOLLOWUP_ESCALATION_TEMPLATES : FIRST_ESCALATION_TEMPLATES;
-  return templates[Math.floor(Math.random() * templates.length)];
+
+  // 최근 사용한 템플릿과 겹치지 않도록 필터링
+  const recentUsed = roomId ? (recentEscMessages.get(roomId) || []) : [];
+  const available = templates.filter(t => !recentUsed.includes(t));
+  const pool = available.length > 0 ? available : templates;
+
+  const selected = pool[Math.floor(Math.random() * pool.length)];
+
+  // 최근 사용 기록 업데이트 (최대 5개 유지)
+  if (roomId) {
+    const recent = recentUsed.slice(-4);
+    recent.push(selected);
+    recentEscMessages.set(roomId, recent);
+  }
+
+  return selected;
 }
 
 // ===================== AI 카테고리 분류 =====================

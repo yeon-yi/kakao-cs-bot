@@ -42,8 +42,9 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="카카오톡 알림 모니터링 및 자동 응답" />
+                android:value="KakaoTalk notification monitoring and auto-response" />
         </service>
+
 
         <receiver
             android:name=".BootReceiver"

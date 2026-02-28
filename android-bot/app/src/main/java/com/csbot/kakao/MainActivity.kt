@@ -14,13 +14,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var switchBot: MaterialSwitch
+    private lateinit var switchBot: SwitchMaterial
     private lateinit var tvStatus: TextView
     private lateinit var tvServerStatus: TextView
     private lateinit var tvListenerStatus: TextView
@@ -34,6 +34,37 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 이전 크래시 로그가 있으면 먼저 표시 (레이아웃 없이)
+        val crashSp = getSharedPreferences("crash_log", MODE_PRIVATE)
+        val prevCrash = crashSp.getString("last_crash", null)
+        if (prevCrash != null) {
+            crashSp.edit().clear().apply()
+            val tv = TextView(this).apply {
+                text = "이전 크래시 로그:\n\n$prevCrash"
+                setPadding(48, 48, 48, 48)
+                textSize = 12f
+                setTextIsSelectable(true)
+            }
+            setContentView(android.widget.ScrollView(this).apply { addView(tv) })
+            return  // 크래시 로그만 보여주고 종료
+        }
+
+        try {
+            initMainLayout()
+        } catch (e: Exception) {
+            // 레이아웃 inflation 실패 시 에러 표시
+            val tv = TextView(this).apply {
+                text = "앱 초기화 실패:\n\n${e.javaClass.simpleName}: ${e.message}\n\n${e.stackTraceToString()}"
+                setPadding(48, 48, 48, 48)
+                textSize = 12f
+                setTextIsSelectable(true)
+            }
+            setContentView(android.widget.ScrollView(this).apply { addView(tv) })
+        }
+    }
+
+    private fun initMainLayout() {
         setContentView(R.layout.activity_main)
 
         switchBot = findViewById(R.id.switchBot)
@@ -72,10 +103,7 @@ class MainActivity : AppCompatActivity() {
             refreshUI()
         }
 
-        // Start service if enabled
-        if (App.prefs.botEnabled && !BotService.isRunning) {
-            updateServiceState(true)
-        }
+        // 서비스 자동 시작 안함 - 사용자가 직접 스위치 ON
 
         refreshUI()
     }
@@ -140,11 +168,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateServiceState(enabled: Boolean) {
-        val intent = Intent(this, BotService::class.java)
-        if (enabled) {
-            startForegroundService(intent)
-        } else {
-            stopService(intent)
+        try {
+            val intent = Intent(this, BotService::class.java)
+            if (enabled) {
+                startForegroundService(intent)
+            } else {
+                stopService(intent)
+            }
+        } catch (e: Exception) {
+            LogManager.e("서비스 시작/중지 실패: ${e.message}")
         }
     }
 

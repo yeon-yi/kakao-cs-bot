@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import java.util.Timer
@@ -18,18 +17,26 @@ class BotService : Service() {
     companion object {
         var isRunning = false
             private set
-        private const val HEARTBEAT_INTERVAL_MS = 30_000L // 30초마다 하트비트
+        private const val HEARTBEAT_INTERVAL_MS = 30_000L
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
-        startForegroundNotification()
-        startProactivePolling()
-        startHeartbeat()
-        LogManager.i("봇 서비스 시작")
+        try {
+            isRunning = true
+            startForegroundNotification()
+            startProactivePolling()
+            startHeartbeat()
+            LogManager.i("봇 서비스 시작")
+        } catch (e: Exception) {
+            // 서비스 시작 실패 시 botEnabled 리셋
+            LogManager.e("서비스 시작 실패: ${e.javaClass.simpleName}: ${e.message}")
+            try { App.prefs.botEnabled = false } catch (_: Exception) {}
+            isRunning = false
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,18 +68,13 @@ class BotService : Service() {
             .setOngoing(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(1, notification)
-        }
+        startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
     }
 
     private fun startHeartbeat() {
         heartbeatTimer?.cancel()
         heartbeatTimer = Timer("heartbeat")
 
-        // 기기 등록 (즉시)
         heartbeatTimer?.schedule(object : TimerTask() {
             override fun run() {
                 try {
@@ -86,7 +88,6 @@ class BotService : Service() {
             }
         }, 1000)
 
-        // 주기적 하트비트 (30초마다)
         heartbeatTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 try {
@@ -101,9 +102,8 @@ class BotService : Service() {
         proactiveTimer = Timer("proactive-poll")
         proactiveTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
-                if (!App.prefs.botEnabled) return
-
                 try {
+                    if (!App.prefs.botEnabled) return
                     val messages = ApiClient.fetchPendingProactive()
                     if (messages.isEmpty()) return
 

@@ -334,9 +334,9 @@ class AIGateway {
     if (analyzerStep) {
       const resp = await this.callProvider(analyzerStep.provider, {
         prompt: this.buildAnalyzerPrompt(userMessage, knowledgeContext, historyContext),
-        systemPrompt: '고객 메시지 분석 전문가입니다. 지시된 형식으로만 응답하세요.',
+        systemPrompt: '온라인 마케팅/광고 대행사의 고객 메시지 분석 전문가입니다. 지시된 형식(복잡도/감정/핵심의도/이전대화반복/관련지식요약/응답방향/주의사항)으로만 응답하세요. 분석 외의 내용을 출력하지 마세요.',
         temperature: analyzerStep.temperature,
-        maxTokens: 500,
+        maxTokens: 600,
       }, Date.now());
       analysisText = resp.text;
       steps.push({
@@ -350,7 +350,7 @@ class AIGateway {
     let responseText = '';
     if (responderStep) {
       const prompt = analysisText
-        ? `고객 메시지: "${userMessage}"\n\n분석 결과:\n${analysisText}\n\n참고 지식:\n${knowledgeContext}\n\n최근 대화:\n${historyContext || '(첫 대화)'}\n\n위 분석을 바탕으로 고객에게 최적의 답변을 작성하세요.`
+        ? `고객 메시지: "${userMessage}"\n\n=== 분석 결과 ===\n${analysisText}\n\n=== 참고 지식 ===\n${knowledgeContext}\n\n=== 최근 대화 ===\n${historyContext || '(첫 대화)'}\n\n위 분석의 "응답방향"과 "주의사항"을 반드시 따라서 답변하세요. "이전대화반복: YES"이면 이전과 다른 새로운 내용으로 답변하세요.`
         : userMessage;
       const resp = await this.callProvider(responderStep.provider, {
         prompt,
@@ -369,8 +369,27 @@ class AIGateway {
     let finalText = responseText;
     if (verifierStep) {
       const resp = await this.callProvider(verifierStep.provider, {
-        prompt: `원래 고객 질문: "${userMessage}"\n\n제안된 답변:\n"${responseText}"\n\n참고 지식:\n${knowledgeContext}\n\n검증하세요:\n1. 지식과 일치하는가?\n2. 고객 톤에 적절한가?\n3. 누락 정보 없는가?\n\n수정 필요하면 수정된 답변을, 아니면 그대로 출력하세요. 검증 메모 없이 최종 답변만 출력:`,
-        systemPrompt: '답변 품질 검증기입니다. 최종 답변만 출력하세요.',
+        prompt: `원래 고객 질문: "${userMessage}"
+
+제안된 답변:
+"${responseText}"
+
+참고 지식:
+${knowledgeContext}
+
+최근 대화:
+${historyContext || '(첫 대화)'}
+
+다음 기준으로 검증하고, 문제가 있으면 수정하세요:
+1. 정확성: 참고 지식과 일치하는가? 없는 정보를 지어내지 않았는가?
+2. 톤 적절성: "대표님" 호칭 사용, 프로페셔널한 존댓말, 이모지/느낌표 없음
+3. 반복 여부: 최근 대화에서 이미 한 말을 또 하고 있지 않은가? (인사 반복, 같은 안내 반복)
+4. 간결성: 2~4문장 이내인가? 불필요한 사족이 없는가?
+5. 자연스러움: AI 특유의 패턴("물론입니다", "도움이 되셨으면") 없는가?
+6. 맥락 적합성: 고객 질문에 실제로 답변하고 있는가? (질문을 되묻기만 하면 안 됨)
+
+검증 메모 없이 최종 답변만 출력하세요. 수정이 불필요하면 원문 그대로 출력:`,
+        systemPrompt: '답변 품질 검증기입니다. 최종 답변만 출력하세요. 검증 과정이나 설명을 절대 포함하지 마세요.',
         temperature: verifierStep.temperature,
         maxTokens: 1500,
       }, Date.now());
@@ -397,8 +416,9 @@ class AIGateway {
   // ─── 프롬프트 빌더 ──────────────────────────────────
 
   private buildAnalyzerPrompt(userMessage: string, knowledge: string, history: string): string {
-    return `다음 고객 메시지를 분석하세요:
-메시지: "${userMessage}"
+    return `고객 메시지를 분석하고, 아래 형식으로 정확히 출력하세요.
+
+고객 메시지: "${userMessage}"
 
 참고 지식:
 ${knowledge || '(없음)'}
@@ -406,12 +426,14 @@ ${knowledge || '(없음)'}
 최근 대화:
 ${history || '(첫 대화)'}
 
-다음을 분석:
-1. 질문 복잡도 (단순/보통/복잡)
-2. 핵심 키워드
-3. 고객 감정 (긍정/중립/부정/급함)
-4. 추천 응답 방향 (2~3줄)
-5. 가장 관련 있는 지식 내용 요약`;
+=== 아래 형식으로 분석 ===
+복잡도: (단순/보통/복잡)
+감정: (긍정/중립/불만/급함)
+핵심의도: (고객이 실제로 원하는 것을 1문장으로)
+이전대화반복: (이전 대화에서 이미 답변한 내용인지 YES/NO)
+관련지식요약: (참고 지식 중 가장 관련 있는 내용 1~2문장, 없으면 "해당없음")
+응답방향: (어떤 톤과 내용으로 답변해야 하는지 2~3문장)
+주의사항: (답변 시 피해야 할 것, 이전 응답과 겹치는 표현 등)`;
   }
 
   private buildResponderPrompt(knowledge: string, history: string): string {
@@ -419,10 +441,18 @@ ${history || '(첫 대화)'}
 카카오톡으로 광고주(고객)와 대화합니다. 고객은 대부분 사업주/대표입니다.
 
 대화 스타일:
-- 고객을 "대표님"으로 호칭
+- 고객을 "대표님"으로 호칭 ("고객님" 사용 금지)
 - 프로페셔널한 존댓말, 2~4문장 이내
 - 확신 있는 정보만 전달
+- 이모지, 이모티콘, 특수기호, 물결(~), 느낌표 남발 금지
 - AI임을 절대 드러내지 마세요
+
+반복 금지:
+- 이전 대화에서 이미 인사("안녕하세요")를 했으면 인사 생략
+- 이전 응답과 같은 내용/표현을 반복하지 말 것
+- "감사합니다" 마무리를 연속 사용하지 말 것
+- [주의] 태그가 있으면 반드시 따를 것
+- 참고 지식의 [정확도] 태그 확인: "높음"=신뢰, "보통"=핵심만, "낮음"=참고만
 
 ${knowledge ? `참고 지식:\n${knowledge}` : ''}
 ${history ? `최근 대화:\n${history}` : ''}`;
