@@ -103,10 +103,10 @@ export class MessageAgent {
       const cached = await this.cache.get(message);
       if (cached) {
         this.currentState = 'TYPING';
-        await this.simulateDelay(await humanizer.getTypingDelay(cached.length));
+        await this.simulateDelay(await humanizer.getTypingDelay(cached.answer.length));
         await this.completeTask(task.id, {
           action: 'RESPONDED',
-          answer: cached,
+          answer: cached.answer,
           fromCache: true,
           processingTime: Date.now() - startTime,
         });
@@ -219,7 +219,7 @@ ${knowledgeContext || '(관련 지식 없음)'}
       await this.simulateDelay(await humanizer.getTypingDelay(humanized.length));
 
       // 8. Cache the response
-      await this.cache.set(message, humanized);
+      await this.cache.set(message, humanized, 0.8, response.model);
 
       // 9. Save conversation
       await this.conversationRepo.create({

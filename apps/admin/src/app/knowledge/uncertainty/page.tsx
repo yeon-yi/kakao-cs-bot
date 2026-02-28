@@ -9,9 +9,9 @@ import { Card } from '@/components/ui/card';
 import { AlertTriangle, CheckCircle2, X, TrendingUp } from 'lucide-react';
 
 const STATUS_TABS = [
-  { value: 'open', label: '미해결' },
-  { value: 'addressed', label: '해결됨' },
-  { value: 'dismissed', label: '무시' },
+  { value: 'open' as const, label: '미해결' },
+  { value: 'addressed' as const, label: '해결됨' },
+  { value: 'dismissed' as const, label: '무시' },
 ];
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -23,7 +23,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default function UncertaintyPage() {
-  const [statusFilter, setStatusFilter] = useState('open');
+  const [statusFilter, setStatusFilter] = useState<'open' | 'addressed' | 'dismissed'>('open');
   const [offset, setOffset] = useState(0);
   const [answeringId, setAnsweringId] = useState<number | null>(null);
   const [answerQuestion, setAnswerQuestion] = useState('');

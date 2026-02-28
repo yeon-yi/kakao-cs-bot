@@ -2,6 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 const variants = {
+  default: 'bg-[hsl(var(--primary))] text-white hover:bg-blue-700 active:bg-blue-800',
   primary: 'bg-[hsl(var(--primary))] text-white hover:bg-blue-700 active:bg-blue-800',
   secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-slate-200',
   destructive: 'bg-[hsl(var(--destructive))] text-white hover:bg-red-700',
