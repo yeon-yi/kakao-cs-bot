@@ -123,6 +123,39 @@ export async function getConversationHistory(roomId: string, userName: string): 
   }
 }
 
+// ===================== 방 전체 대화 맥락 (봇 태그 시 사용) =====================
+async function getRoomContextForMention(roomId: string): Promise<string> {
+  try {
+    const history = await conversationRepo.getRoomHistory(roomId, 15);
+    if (!history || history.length === 0) return '(이 방의 대화 기록 없음)';
+
+    const ordered = history.reverse();
+    const parts: string[] = [];
+    const answeredQuestions = new Set<string>();
+
+    for (const h of ordered) {
+      const lines: string[] = [];
+      const sender = h.user_name || '사용자';
+      if (h.user_message) lines.push(`[${sender}] ${h.user_message}`);
+      if (h.bot_response) {
+        lines.push(`[봇 응답] ${h.bot_response}`);
+        // 이미 답변된 질문 추적
+        if (h.user_message) answeredQuestions.add(h.user_message.substring(0, 30));
+      }
+      if (lines.length > 0) parts.push(lines.join('\n'));
+    }
+
+    const context = parts.join('\n\n');
+    const answeredNote = answeredQuestions.size > 0
+      ? `\n\n[이미 답변된 질문 ${answeredQuestions.size}건 - 중복 답변하지 말 것]`
+      : '';
+
+    return context + answeredNote;
+  } catch {
+    return '';
+  }
+}
+
 // ===================== 코사인 유사도 =====================
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
@@ -244,7 +277,20 @@ export async function processMessage(c: any): Promise<Response> {
       isTestMode = true;
     }
 
-    // 0-3. 발신자 직원 여부 자동 감지 (테스트모드에서는 건너뜀)
+    // 0-3. 봇 멘션(@태그) 감지
+    const botName = webhookConfig.botKakaoName;
+    const mentionPatterns = botName
+      ? [botName, `@${botName}`]
+      : [];
+    const isBotMentioned = mentionPatterns.length > 0 && mentionPatterns.some(p => message.includes(p));
+    // 멘션 텍스트를 제거한 실제 질문 추출
+    let effectiveMessage = message;
+    if (isBotMentioned && botName) {
+      effectiveMessage = message.replace(new RegExp(`@?${botName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '').trim();
+    }
+
+    // 0-4. 발신자 직원 여부 자동 감지
+    let isStaffSender = false;
     if (!isTestMode && userName) {
       try {
         // 0차: 이 방에서 이미 광고주로 확인된 사용자는 직원 감지 건너뜀
@@ -269,8 +315,17 @@ export async function processMessage(c: any): Promise<Response> {
           }
 
           if (isStaff) {
+            isStaffSender = true;
             await identityRepo.upsertRoomMember(roomId, userName, userName, 'company_staff', 1.0);
-            return c.json({ answer: null, reason: 'staff_message' });
+
+            // 직원 메시지 처리 분기:
+            // - 1:1 채팅: 직원도 AI 응답 받을 수 있음
+            // - 그룹 채팅 + 봇 태그: 방의 최근 대화 맥락 분석 후 응답
+            // - 그룹 채팅 + 태그 없음: 응답하지 않음
+            if (isGroupChat && !isBotMentioned) {
+              return c.json({ answer: null, reason: 'staff_message' });
+            }
+            // 1:1 채팅이거나 봇 태그된 경우 → 아래로 진행하여 응답
           } else {
             await identityRepo.upsertRoomMember(roomId, userName, userName, 'advertiser', 0.5);
           }
@@ -316,9 +371,16 @@ export async function processMessage(c: any): Promise<Response> {
     await redisClient.del(bufferKey);
     await redisClient.del(nonceKey);
 
-    const combinedMessage = bufferedMessages.length > 1
+    let combinedMessage = bufferedMessages.length > 1
       ? bufferedMessages.join('\n')
       : message;
+
+    // 봇 멘션 시 멘션 텍스트 제거한 실제 질문 사용
+    if (isBotMentioned && botName) {
+      combinedMessage = combinedMessage.replace(new RegExp(`@?${botName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '').trim();
+      if (!combinedMessage) combinedMessage = message; // 멘션만 있는 경우 원본 사용
+      logger.info('Bot mentioned', { roomId, userName, originalMessage: message, cleanedMessage: combinedMessage });
+    }
 
     if (bufferedMessages.length > 1) {
       logger.info('Messages batched', { roomId, count: bufferedMessages.length });
@@ -345,8 +407,12 @@ export async function processMessage(c: any): Promise<Response> {
     let usedKnowledgeId: string | null = null;
     let fromCache = false;
 
-    const historyContext = await getConversationHistory(roomId, userName || 'unknown');
-    const customerProfile = await getCustomerProfile(roomId).catch(() => null);
+    // 봇 태그 시: 방 전체 대화 맥락 사용 (이미 답변된 건 표시)
+    // 일반 메시지: 해당 사용자의 대화 기록만 사용
+    const historyContext = isBotMentioned
+      ? await getRoomContextForMention(roomId)
+      : await getConversationHistory(roomId, userName || 'unknown');
+    const customerProfile = isStaffSender ? null : await getCustomerProfile(roomId).catch(() => null);
 
     // 캐시 조회
     if (!needsEscalation) {

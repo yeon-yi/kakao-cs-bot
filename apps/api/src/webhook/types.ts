@@ -6,6 +6,7 @@ export interface WebhookConfigCache {
   opStart: string;
   opEnd: string;
   escalationThreshold: number;
+  botKakaoName: string;
   loadedAt: number;
 }
 

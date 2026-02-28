@@ -17,6 +17,7 @@ const SETTING_DEFINITIONS = [
   // 봇 제어
   { key: 'bot.mode', label: '봇 모드', category: 'bot_control', sensitive: false, description: 'off / test / on (기본: off)' },
   { key: 'bot.test_rooms', label: '테스트 방 목록', category: 'bot_control', sensitive: false, description: '테스트 모드에서 봇이 응답할 방 이름 (쉼표 구분)' },
+  { key: 'bot.kakao_name', label: '봇 카카오 이름', category: 'bot_control', sensitive: false, description: '카카오톡 봇 프로필 이름 (그룹채팅에서 @태그 감지용)' },
   { key: 'operation.start_time', label: '운영 시작 시간', category: 'bot_control', sensitive: false, description: 'HH:MM 형식 (기본: 09:50)' },
   { key: 'operation.end_time', label: '운영 종료 시간', category: 'bot_control', sensitive: false, description: 'HH:MM 형식 (기본: 18:30)' },
   // AI API Keys

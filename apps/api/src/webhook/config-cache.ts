@@ -66,12 +66,13 @@ export async function getWebhookConfig(): Promise<WebhookConfigCache> {
   }
 
   const env = getEnv();
-  const [modeConfig, testRoomsConfig, startConfig, endConfig, thresholdConfig] = await Promise.all([
+  const [modeConfig, testRoomsConfig, startConfig, endConfig, thresholdConfig, botNameConfig] = await Promise.all([
     configRepo.get('bot.mode').catch(() => null),
     configRepo.get('bot.test_rooms').catch(() => null),
     configRepo.get('operation.start_time').catch(() => null),
     configRepo.get('operation.end_time').catch(() => null),
     configRepo.get('response.escalation_threshold').catch(() => null),
+    configRepo.get('bot.kakao_name').catch(() => null),
   ]);
 
   const testRoomsStr = parseConfigValue(testRoomsConfig, '').trim();
@@ -83,6 +84,7 @@ export async function getWebhookConfig(): Promise<WebhookConfigCache> {
     opStart: parseConfigValue(startConfig, env.OPERATION_START_TIME || '09:50'),
     opEnd: parseConfigValue(endConfig, env.OPERATION_END_TIME || '18:30'),
     escalationThreshold: isNaN(thresholdVal) ? 0.5 : thresholdVal,
+    botKakaoName: parseConfigValue(botNameConfig, '').trim(),
     loadedAt: now,
   };
   return webhookConfigCache;

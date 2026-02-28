@@ -30,6 +30,13 @@ export class ConversationRepository {
     );
   }
 
+  async getRoomHistory(roomId: string, limit = 20) {
+    return query(
+      'SELECT * FROM conversations WHERE room_id = $1 ORDER BY created_at DESC LIMIT $2',
+      [roomId, limit]
+    );
+  }
+
   async getRecent(limit = 50) {
     return query('SELECT * FROM conversations ORDER BY created_at DESC LIMIT $1', [limit]);
   }
