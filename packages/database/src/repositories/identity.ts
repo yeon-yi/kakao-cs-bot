@@ -54,6 +54,55 @@ export class IdentityRepository {
     );
   }
 
+  async listMembers(options: { role?: string; search?: string; offset?: number; limit?: number }) {
+    const conditions: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (options.role && options.role !== 'all') {
+      conditions.push(`rm.role = $${idx}`);
+      values.push(options.role);
+      idx++;
+    }
+    if (options.search) {
+      conditions.push(`(rm.user_name ILIKE $${idx} OR rm.room_id ILIKE $${idx})`);
+      values.push(`%${options.search}%`);
+      idx++;
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit || 50;
+    const offset = options.offset || 0;
+
+    const [rows, countRow] = await Promise.all([
+      query(
+        `SELECT rm.*,
+                EXISTS(SELECT 1 FROM company_staff cs WHERE cs.kakao_name = rm.user_name AND cs.is_active = true) as has_staff_match
+         FROM room_members rm ${where}
+         ORDER BY rm.updated_at DESC
+         LIMIT $${idx} OFFSET $${idx + 1}`,
+        [...values, limit, offset]
+      ),
+      queryOne(
+        `SELECT COUNT(*)::int as total FROM room_members rm ${where}`,
+        values
+      ),
+    ]);
+
+    return { data: rows, total: countRow?.total || 0 };
+  }
+
+  async getNameCollisions() {
+    return query(
+      `SELECT rm.id, rm.room_id, rm.user_id, rm.user_name, rm.role, rm.confidence, rm.confirmed_by, rm.updated_at,
+              cs.id as staff_id, cs.real_name as staff_real_name, cs.kakao_name as staff_kakao_name, cs.department
+       FROM room_members rm
+       JOIN company_staff cs ON (cs.kakao_name = rm.user_name OR cs.real_name = rm.user_name) AND cs.is_active = true
+       WHERE rm.role = 'advertiser'
+       ORDER BY rm.updated_at DESC`
+    );
+  }
+
   // 다른 방에서 이미 company_staff로 확인된 사용자인지 체크
   async isKnownStaff(userName: string): Promise<boolean> {
     const row = await queryOne(

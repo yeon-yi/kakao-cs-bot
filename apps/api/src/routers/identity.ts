@@ -129,4 +129,20 @@ export const identityRouter = router({
     .query(async () => {
       return identityRepo.listUnconfirmed();
     }),
+
+  listMembers: protectedProcedure
+    .input(z.object({
+      role: z.string().optional(),
+      search: z.string().optional(),
+      offset: z.number().default(0),
+      limit: z.number().default(50),
+    }))
+    .query(async ({ input }) => {
+      return identityRepo.listMembers(input);
+    }),
+
+  nameCollisions: protectedProcedure
+    .query(async () => {
+      return identityRepo.getNameCollisions();
+    }),
 });
