@@ -7,7 +7,7 @@ interface HumanizeContext {
   isThankYou?: boolean;
   customerMessage?: string;
   hasHistory?: boolean;
-  /** 고객 격식 수준 - 'casual'이면 ~요체 유지 */
+  /** 고객 격식 수준 */
   customerFormality?: 'formal' | 'semi-formal' | 'casual';
 }
 
@@ -82,10 +82,8 @@ export class Humanizer {
     // 1. AI 특유의 패턴 제거
     result = this.removeAIPatterns(result);
 
-    // 2. 프로페셔널 문장 종결 통일 (격식체일 때만 ~요 → ~습니다)
-    if (!context?.customerFormality || context.customerFormality === 'formal') {
-      result = this.professionalizeEndings(result);
-    }
+    // 2. 프로페셔널 문장 종결 통일 (~요 → ~습니다, 항상 적용)
+    result = this.professionalizeEndings(result);
 
     // 3. 톤 기반 미세 조정
     let tone: CustomerTone = 'normal';
@@ -165,6 +163,15 @@ export class Humanizer {
     result = result.replace(/없어요/g, '없습니다');
     result = result.replace(/돼요|되요/g, '됩니다');
     result = result.replace(/에요([.!?]?\s|[.!?]?$)/g, '입니다$1');
+    // 추가 요체 → 다/까 체 변환
+    result = result.replace(/해주세요/g, '해 주십시오');
+    result = result.replace(/해 주세요/g, '해 주십시오');
+    result = result.replace(/말씀해\s*주세요/g, '말씀해 주십시오');
+    result = result.replace(/주세요([.!?]?\s|[.!?]?$)/g, '주십시오$1');
+    result = result.replace(/인가요/g, '입니까');
+    result = result.replace(/나요([.!?]?\s|[.!?]?$)/g, '니까$1');
+    result = result.replace(/건가요/g, '것입니까');
+    result = result.replace(/([가-힣])세요/g, '$1십시오');
 
     return result;
   }

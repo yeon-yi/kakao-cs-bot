@@ -67,9 +67,9 @@ describe('Humanizer', () => {
       expect(result).toContain('있습니다');
     });
 
-    it('casual 고객이면 ~요 체 유지', () => {
+    it('casual 고객이어도 ~요 체 → ~습니다 체 변환', () => {
       const result = humanizer.humanizeResponse('드릴게요.', { customerFormality: 'casual' });
-      expect(result).toContain('드릴게요');
+      expect(result).toContain('드리겠습니다');
     });
   });
 
