@@ -4,10 +4,10 @@ import type { Database } from '../types';
 type EscalationInsert = Database['public']['Tables']['escalations']['Insert'];
 
 export class EscalationRepository {
-  async create(input: EscalationInsert) {
+  async create(input: EscalationInsert & { ai_suggestion?: string | null; context?: string | null }) {
     const row = await queryOne(
-      `INSERT INTO escalations (conversation_id, room_id, user_id, user_name, user_message, bot_response, category, confidence, status, assigned_to, escalation_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO escalations (conversation_id, room_id, user_id, user_name, user_message, bot_response, category, confidence, status, assigned_to, escalation_type, ai_suggestion, context)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         input.conversation_id ?? null, input.room_id, input.user_id,
@@ -15,6 +15,7 @@ export class EscalationRepository {
         input.category ?? null, input.confidence ?? null,
         input.status ?? 'pending', input.assigned_to ?? null,
         input.escalation_type ?? 'low_confidence',
+        input.ai_suggestion ?? null, input.context ?? null,
       ]
     );
     return row;

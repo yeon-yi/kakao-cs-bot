@@ -70,42 +70,50 @@ export async function createEscalation(params: CreateEscalationParams): Promise<
   // 담당자 배정
   const { staffId: assignedStaffId, source: assignedSource } = await resolveAssignee(roomId, category);
 
-  // 컨텍스트 수집 (hard escalation에만)
-  let userMessage = message;
+  // 컨텍스트 수집 (별도 필드에 저장)
+  let contextData: string | null = null;
   if (contextOverride) {
-    userMessage = `${message}\n\n--- 컨텍스트 ---\n${contextOverride}`;
+    contextData = contextOverride;
   } else if (includeContext) {
     try {
       const parts: string[] = [];
-      // 최근 대화 직접 조회 (순환 참조 방지)
       const recentConvs = await conversationRepo.getHistory(roomId, userName, 5).catch(() => []);
       if (recentConvs && recentConvs.length > 0) {
         const historyLines = recentConvs.reverse().map((h: any) => {
           const lines: string[] = [];
-          if (h.user_message) lines.push(`[고객] ${h.user_message}`);
-          if (h.bot_response) lines.push(`[나] ${h.bot_response}`);
+          if (h.user_message) lines.push(`고객: ${h.user_message}`);
+          if (h.bot_response) lines.push(`응답: ${h.bot_response}`);
           return lines.join('\n');
-        }).join('\n');
-        parts.push(`[최근 대화]\n${historyLines.substring(0, 500)}`);
-      }
-      const prevEscalations = await escalationRepo.list({
-        status: undefined, offset: 0, limit: 3,
-      }).catch(() => ({ items: [] }));
-      const roomEscalations = (prevEscalations as any)?.items?.filter?.((e: any) => e.room_id === roomId) || [];
-      if (roomEscalations.length > 0) {
-        const esc = roomEscalations.slice(0, 3).map((e: any) =>
-          `${e.created_at?.substring(0, 10) || '?'}: "${(e.user_message || '').substring(0, 80)}" → ${e.status}`
-        ).join('\n');
-        parts.push(`[이전 에스컬레이션]\n${esc}`);
+        }).join('\n---\n');
+        parts.push(historyLines.substring(0, 500));
       }
       const profile = await getCustomerProfile(roomId);
       if (profile) {
-        parts.push(`[고객 프로필] 격식:${profile.formalityLevel}, 대화${profile.interactionCount}회`);
+        parts.push(`고객 대화 ${profile.interactionCount}회, 말투: ${profile.formalityLevel === 'formal' ? '격식체' : profile.formalityLevel === 'casual' ? '편한말투' : '반존댓말'}`);
       }
       if (parts.length > 0) {
-        userMessage = `${message}\n\n--- 컨텍스트 ---\n${parts.join('\n\n')}`;
+        contextData = parts.join('\n\n');
       }
     } catch {}
+  }
+
+  // AI suggestion: 담당자 참고용 추천 답변
+  let aiSuggestion: string | null = null;
+  try {
+    const suggestionResponse = await aiGateway.generate({
+      prompt: `고객 질문: "${message.substring(0, 300)}"
+분류: ${category || '일반'}
+봇 응답: "${answer?.substring(0, 200) || 'N/A'}"
+
+경험 많은 CS 담당자로서 더 구체적이고 도움이 되는 답변을 작성하세요.
+2~3문장, 격식체 존댓말. 정보가 부족하면 확인할 사항과 후속 조치를 제안하세요.`,
+      systemPrompt: '마케팅 대행사 시니어 CS 담당자입니다. 한국어로 추천 답변을 작성하세요. 이모지 사용 금지.',
+      temperature: 0.5,
+      complexity: 'simple',
+    });
+    aiSuggestion = suggestionResponse.text?.trim() || null;
+  } catch (e) {
+    logger.warn('AI suggestion generation failed', { error: String(e) });
   }
 
   await escalationRepo.create({
@@ -113,7 +121,7 @@ export async function createEscalation(params: CreateEscalationParams): Promise<
     room_id: roomId,
     user_id: userName || 'unknown',
     user_name: userName,
-    user_message: userMessage,
+    user_message: message,
     bot_response: answer,
     category,
     confidence,
@@ -121,7 +129,9 @@ export async function createEscalation(params: CreateEscalationParams): Promise<
     assigned_to: assignedStaffId,
     assigned_at: assignedStaffId ? new Date().toISOString() : null,
     escalation_type: escalationType,
-  });
+    ai_suggestion: aiSuggestion,
+    context: contextData,
+  } as any);
 
   logger.info('Escalation created', {
     roomId, userName, category, type: escalationType,
