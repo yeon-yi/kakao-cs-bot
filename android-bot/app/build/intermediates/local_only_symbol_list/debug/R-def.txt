@@ -1,0 +1,27 @@
+R_DEF: Internal format may change without notice
+local
+color background
+color on_primary
+color on_surface
+color primary
+color primary_dark
+color secondary
+color surface
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+id btnCheckStatus
+id btnClearLog
+id btnPermission
+id btnSettings
+id rvLogs
+id switchBot
+id tvApiUrl
+id tvListenerStatus
+id tvServerStatus
+id tvStats
+id tvStatus
+layout activity_main
+mipmap ic_launcher
+string app_name
+style Theme.CSBot
+xml network_security_config

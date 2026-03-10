@@ -26,6 +26,8 @@ const SETTING_DEFINITIONS = [
   { key: 'api.anthropic_key', label: 'Anthropic API Key', category: 'api_keys', sensitive: true, description: 'Claude (선택)' },
   // AI Settings
   { key: 'ai.default_model', label: 'Default Model', category: 'ai', sensitive: false, description: 'gpt-4o / gpt-4o-mini / gemini-flash' },
+  { key: 'ai.openai_model_complex', label: 'OpenAI 복잡 모델', category: 'ai', sensitive: false, description: '유사도 낮은 질문용 (기본: gpt-4o). 예: gpt-4o, gpt-5.4' },
+  { key: 'ai.openai_model_simple', label: 'OpenAI 간단 모델', category: 'ai', sensitive: false, description: '유사도 높은 질문용 (기본: gpt-4o-mini). 예: gpt-4o-mini, gpt-5.4-mini' },
   { key: 'ai.gemini.temperature', label: 'Temperature', category: 'ai', sensitive: false, description: '0.0 ~ 2.0 (기본: 0.7)' },
   { key: 'ai.gemini.max_tokens', label: 'Max Tokens', category: 'ai', sensitive: false, description: '최대 출력 토큰 수' },
   { key: 'ai.fallback_enabled', label: 'Fallback 활성화', category: 'ai', sensitive: false, description: '1순위 실패 시 백업 모델 사용' },

@@ -277,6 +277,21 @@ export async function loadChainOverrides(): Promise<void> {
     if (verifier && verifier !== 'auto') overrides.verifier = verifier;
 
     aiGateway.setManualOverrides(overrides);
+
+    // OpenAI 모델명 설정 로드
+    const [complexModel, simpleModel] = await Promise.all([
+      configRepo.get('ai.openai_model_complex').catch(() => null),
+      configRepo.get('ai.openai_model_simple').catch(() => null),
+    ]);
+    const complexVal = parseConfigValue(complexModel, '').trim();
+    const simpleVal = parseConfigValue(simpleModel, '').trim();
+    if (complexVal || simpleVal) {
+      aiGateway.setOpenAIModels({
+        ...(complexVal ? { complex: complexVal } : {}),
+        ...(simpleVal ? { simple: simpleVal } : {}),
+      });
+    }
+
     chainOverridesLoadedAt = now;
   } catch (e) {
     logger.warn('Failed to load chain overrides', { error: String(e) });

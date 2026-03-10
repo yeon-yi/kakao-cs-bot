@@ -67,6 +67,8 @@ interface ChainStrategy {
 const COST_TABLE: Record<string, { input: number; output: number }> = {
   'gpt-4o': { input: 2.5, output: 10.0 },
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-5.4': { input: 5.0, output: 20.0 },
+  'gpt-5.4-mini': { input: 0.30, output: 1.20 },
   'gemini-2.0-flash': { input: 0.10, output: 0.40 },
   'claude-sonnet-4-20250514': { input: 3.0, output: 15.0 },
 };
@@ -93,6 +95,24 @@ class AIGateway {
     responder?: string;
     verifier?: string;
   } = {};
+
+  // OpenAI 모델명 오버라이드 (DB에서 로드)
+  private openaiModels: { complex: string; simple: string } = {
+    complex: 'gpt-4o',
+    simple: 'gpt-4o-mini',
+  };
+
+  /** OpenAI 모델명 설정 (외부에서 DB 값 주입) */
+  setOpenAIModels(models: { complex?: string; simple?: string }) {
+    if (models.complex) this.openaiModels.complex = models.complex;
+    if (models.simple) this.openaiModels.simple = models.simple;
+    logger.info('OpenAI models updated', { complex: this.openaiModels.complex, simple: this.openaiModels.simple });
+  }
+
+  /** 현재 설정된 OpenAI 모델명 반환 */
+  getOpenAIModels() {
+    return { ...this.openaiModels };
+  }
 
   private getGemini(): GoogleGenerativeAI | null {
     const key = getEnv().GEMINI_API_KEY;
@@ -494,7 +514,7 @@ ${history ? `최근 대화:\n${history}` : ''}`;
 
   private async callOpenAI(request: LLMRequest, complexity: TaskComplexity, start: number): Promise<LLMResponse> {
     const openai = this.getOpenAI()!;
-    const modelName = complexity === 'complex' ? 'gpt-4o' : 'gpt-4o-mini';
+    const modelName = request.model || (complexity === 'complex' ? this.openaiModels.complex : this.openaiModels.simple);
 
     const messages: Array<{ role: 'system' | 'user'; content: any }> = [];
     if (request.systemPrompt) messages.push({ role: 'system', content: request.systemPrompt });
