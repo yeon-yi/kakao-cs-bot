@@ -759,21 +759,25 @@ export async function processMessage(c: any): Promise<Response> {
         const { staffId: tagStaffId } = await resolveAssignee(roomId, staffCategory);
         if (tagStaffId) {
           const tagStaff = await dbQueryOne(
-            'SELECT real_name, kakao_room_id FROM company_staff WHERE id = $1',
+            'SELECT real_name, kakao_name, kakao_room_id FROM company_staff WHERE id = $1',
             [tagStaffId]
           );
-          // 에스컬레이션이 아닌 경우에만 별도 알림 (에스컬레이션은 createEscalation에서 이미 전송)
-          if (!escalated && tagStaff?.kakao_room_id) {
+          // 톡방 응답에 @카카오닉네임 태그 추가
+          if (tagStaff?.kakao_name) {
+            answer = `@${tagStaff.kakao_name} ${answer}`;
+          }
+          if (tagStaff?.kakao_room_id) {
             const msgPreview = combinedMessage.length > 100
               ? combinedMessage.substring(0, 100) + '...' : combinedMessage;
+            const notifLabel = escalated ? '에스컬레이션' : '새 문의';
             await proactiveRepo.createMessage({
               room_id: tagStaff.kakao_room_id,
               user_name: tagStaff.real_name,
-              message: `[새 문의 알림]\n톡방: ${roomId}\n고객: ${userName}\n문의: ${msgPreview}`,
+              message: `[${notifLabel} 알림]\n톡방: ${roomId}\n고객: ${userName}\n문의: ${msgPreview}`,
               message_type: 'staff_notification',
             });
             logger.info('Staff notification sent', {
-              staffId: tagStaffId, staffRoom: tagStaff.kakao_room_id,
+              staffId: tagStaffId, staffRoom: tagStaff.kakao_room_id, escalated,
             });
           }
         }
