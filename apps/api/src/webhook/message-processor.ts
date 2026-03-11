@@ -762,10 +762,6 @@ export async function processMessage(c: any): Promise<Response> {
             'SELECT real_name, kakao_name, kakao_room_id FROM company_staff WHERE id = $1',
             [tagStaffId]
           );
-          // 톡방 응답에 @카카오닉네임 태그 추가
-          if (tagStaff?.kakao_name) {
-            answer = `@${tagStaff.kakao_name} ${answer}`;
-          }
           if (tagStaff?.kakao_room_id) {
             const msgPreview = combinedMessage.length > 100
               ? combinedMessage.substring(0, 100) + '...' : combinedMessage;
