@@ -763,7 +763,7 @@ export async function processMessage(c: any): Promise<Response> {
             [tagStaffId]
           );
           if (tagStaff?.real_name) {
-            answer = `[담당: ${tagStaff.real_name}] ${answer}`;
+            answer = `@${tagStaff.real_name} ${answer}`;
           }
           // 에스컬레이션이 아닌 경우에만 별도 알림 (에스컬레이션은 createEscalation에서 이미 전송)
           if (!escalated && tagStaff?.kakao_room_id) {
