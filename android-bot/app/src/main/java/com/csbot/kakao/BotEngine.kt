@@ -105,11 +105,7 @@ object BotEngine {
 
     fun handleProactive(roomId: String, message: String): Boolean {
         val session = NotificationListener.replyActions[roomId] ?: return false
-        // Check if action is not too old (24 hours)
-        if (System.currentTimeMillis() - session.timestamp > 86_400_000) {
-            NotificationListener.replyActions.remove(roomId)
-            return false
-        }
+        // No timeout - reply actions persist until app restart
         return try {
             Thread.sleep((2000..5000).random().toLong())
             sendReply(session.action, message)
