@@ -125,14 +125,21 @@ webhookApp.post('/proactive/report', async (c) => {
     const body = await c.req.json();
     const { id, status, error: errorMsg } = body;
 
+    logger.info('Proactive report received', { id, status, errorMsg, bodyKeys: Object.keys(body) });
+
     if (!id || !status) {
+      logger.warn('Proactive report missing fields', { id, status });
       return c.json({ error: 'id and status are required' }, 400);
     }
 
     if (status === 'sent') {
       await proactiveRepo.markSent(id);
+      logger.info('Proactive marked sent', { id });
     } else if (status === 'failed') {
       await proactiveRepo.markFailed(id, errorMsg || 'unknown');
+      logger.info('Proactive marked failed', { id, errorMsg });
+    } else {
+      logger.warn('Proactive unknown status', { id, status });
     }
 
     return c.json({ success: true });
