@@ -762,9 +762,6 @@ export async function processMessage(c: any): Promise<Response> {
             'SELECT real_name, kakao_room_id FROM company_staff WHERE id = $1',
             [tagStaffId]
           );
-          if (tagStaff?.real_name) {
-            answer = `@${tagStaff.real_name} ${answer}`;
-          }
           // 에스컬레이션이 아닌 경우에만 별도 알림 (에스컬레이션은 createEscalation에서 이미 전송)
           if (!escalated && tagStaff?.kakao_room_id) {
             const msgPreview = combinedMessage.length > 100
