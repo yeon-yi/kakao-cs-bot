@@ -47,12 +47,12 @@ class NotificationListener : NotificationListenerService() {
         val info = extractInfo(notification, extras)
         if (info.room == null || info.message == null) return
 
-        // Allowed rooms filter
+        // Store reply action for ALL rooms (proactive/staff notifications need this)
+        replyActions[info.room] = ReplySession(replyAction, System.currentTimeMillis())
+
+        // Allowed rooms filter (only for bot auto-reply, not proactive)
         val allowed = App.prefs.allowedRooms
         if (allowed.isNotEmpty() && !allowed.contains(info.room)) return
-
-        // Store reply action for proactive use
-        replyActions[info.room] = ReplySession(replyAction, System.currentTimeMillis())
 
         // Delegate to bot engine
         BotEngine.handleMessage(

@@ -105,8 +105,8 @@ object BotEngine {
 
     fun handleProactive(roomId: String, message: String): Boolean {
         val session = NotificationListener.replyActions[roomId] ?: return false
-        // Check if action is not too old (30 min)
-        if (System.currentTimeMillis() - session.timestamp > 1_800_000) {
+        // Check if action is not too old (24 hours)
+        if (System.currentTimeMillis() - session.timestamp > 86_400_000) {
             NotificationListener.replyActions.remove(roomId)
             return false
         }
