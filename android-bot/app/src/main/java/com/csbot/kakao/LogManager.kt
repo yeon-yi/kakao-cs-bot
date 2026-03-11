@@ -6,23 +6,27 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 object LogManager {
 
     data class LogEntry(val time: String, val level: String, val message: String)
 
     private val logs = CopyOnWriteArrayList<LogEntry>()
-    private val listeners = mutableListOf<() -> Unit>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val handler = Handler(Looper.getMainLooper())
-    private val sdf = SimpleDateFormat("HH:mm:ss", Locale.KOREA)
+    private val sdfLocal = ThreadLocal.withInitial {
+        SimpleDateFormat("HH:mm:ss", Locale.KOREA)
+    }
     private const val MAX_LOGS = 200
 
-    var totalMessages = 0
-        private set
-    var totalResponses = 0
-        private set
-    var totalErrors = 0
-        private set
+    private val _totalMessages = AtomicInteger(0)
+    private val _totalResponses = AtomicInteger(0)
+    private val _totalErrors = AtomicInteger(0)
+
+    val totalMessages: Int get() = _totalMessages.get()
+    val totalResponses: Int get() = _totalResponses.get()
+    val totalErrors: Int get() = _totalErrors.get()
 
     fun getAll(): List<LogEntry> = logs.toList()
 
@@ -35,9 +39,9 @@ object LogManager {
     }
 
     private fun add(level: String, message: String) {
-        val entry = LogEntry(sdf.format(Date()), level, message)
+        val entry = LogEntry(sdfLocal.get()!!.format(Date()), level, message)
         logs.add(entry)
-        if (logs.size > MAX_LOGS) {
+        while (logs.size > MAX_LOGS) {
             logs.removeAt(0)
         }
         handler.post { listeners.forEach { it() } }
@@ -55,16 +59,16 @@ object LogManager {
 
     fun e(msg: String) {
         add("ERROR", msg)
-        totalErrors++
+        _totalErrors.incrementAndGet()
         android.util.Log.e("CSBot", msg)
     }
 
     fun message() {
-        totalMessages++
+        _totalMessages.incrementAndGet()
     }
 
     fun response() {
-        totalResponses++
+        _totalResponses.incrementAndGet()
     }
 
     fun clear() {

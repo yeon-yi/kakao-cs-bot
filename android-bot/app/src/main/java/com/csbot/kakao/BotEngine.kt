@@ -4,19 +4,23 @@ import android.app.Notification
 import android.app.RemoteInput
 import android.content.Intent
 import android.os.Bundle
-import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 object BotEngine {
 
-    private val executor = Executors.newFixedThreadPool(3)
+    private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(3)
     private val lastResponseTime = ConcurrentHashMap<String, Long>()
     private val blockedRooms = ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private const val BLOCK_CACHE_TTL = 600_000L
+    private const val MAX_CACHE_SIZE = 500
 
-    private var errorCount = 0
-    private var errorPauseStart = 0L
+    private val errorCount = AtomicInteger(0)
+    private val errorPauseStart = AtomicLong(0L)
     private const val MAX_ERRORS = 5
     private const val ERROR_PAUSE_MS = 300_000L
 
@@ -50,14 +54,19 @@ object BotEngine {
         if (isCooldown(room, prefs.roomCooldownMs)) return
 
         // Error pause
-        if (errorCount >= MAX_ERRORS) {
-            if (errorPauseStart == 0L) errorPauseStart = System.currentTimeMillis()
-            if (System.currentTimeMillis() - errorPauseStart < ERROR_PAUSE_MS) return
-            errorCount = 0
-            errorPauseStart = 0
+        val currentErrors = errorCount.get()
+        if (currentErrors >= MAX_ERRORS) {
+            val pauseStart = errorPauseStart.get()
+            if (pauseStart == 0L) errorPauseStart.compareAndSet(0L, System.currentTimeMillis())
+            if (System.currentTimeMillis() - errorPauseStart.get() < ERROR_PAUSE_MS) return
+            errorCount.set(0)
+            errorPauseStart.set(0L)
         }
 
         LogManager.message()
+
+        // Evict old cache entries if too large
+        evictCacheIfNeeded()
 
         executor.execute {
             try {
@@ -72,33 +81,37 @@ object BotEngine {
                 val mediaType = MEDIA_MESSAGE_TYPES[message]
                 val result = ApiClient.sendMessage(room, sender, message, isGroupChat, mediaType ?: "text")
                 if (result == null) {
-                    errorCount++
+                    errorCount.incrementAndGet()
                     return@execute
                 }
 
-                errorCount = 0
+                errorCount.set(0)
 
                 if (result.answer.isNullOrEmpty()) {
                     LogManager.d("$room | 응답 없음 (${result.reason ?: "unknown"})")
                     return@execute
                 }
 
-                // Delay
+                // Delay using ScheduledExecutor (non-blocking)
                 val extraDelay = (500..2000).random().toLong()
                 val totalDelay = result.delay + extraDelay
-                Thread.sleep(totalDelay)
 
-                // Reply
-                sendReply(replyAction, result.answer)
-                lastResponseTime[room] = System.currentTimeMillis()
-                LogManager.response()
+                executor.schedule({
+                    try {
+                        sendReply(replyAction, result.answer)
+                        lastResponseTime[room] = System.currentTimeMillis()
+                        LogManager.response()
 
-                val tag = if (result.escalated) "에스컬" else "응답"
-                LogManager.i("$room | $sender [$tag] 유사도:${(result.confidence * 100).toInt()}% ${result.processingMs}ms 딜레이:${totalDelay}ms")
+                        val tag = if (result.escalated) "에스컬" else "응답"
+                        LogManager.i("$room | $sender [$tag] 유사도:${(result.confidence * 100).toInt()}% ${result.processingMs}ms 딜레이:${totalDelay}ms")
+                    } catch (e: Exception) {
+                        LogManager.e("응답 전송 오류: ${e.message}")
+                    }
+                }, totalDelay, TimeUnit.MILLISECONDS)
 
             } catch (e: Exception) {
                 LogManager.e("처리 오류: ${e.message}")
-                errorCount++
+                errorCount.incrementAndGet()
             }
         }
     }
@@ -135,9 +148,9 @@ object BotEngine {
                 buildString {
                     append("[CS봇 상태]\n")
                     append("활성: ${if (App.prefs.botEnabled) "켜짐" else "꺼짐"}\n")
-                    append("운영시간: ${if (isOperatingHours()) "운영 중" else "운영 외"}\n")
-                    append("에러: $errorCount/$MAX_ERRORS\n")
+                    append("에러: ${errorCount.get()}/$MAX_ERRORS\n")
                     append("메시지: ${LogManager.totalMessages} / 응답: ${LogManager.totalResponses}\n")
+                    append("캐시: 방${blockedRooms.size} 응답${lastResponseTime.size} 리플${NotificationListener.replyActions.size}\n")
                     if (status != null) {
                         append("서버: ${status.status}\n")
                         append("서버 운영시간: ${status.operatingHours}")
@@ -148,7 +161,7 @@ object BotEngine {
             }
             "!봇켜기" -> {
                 App.prefs.botEnabled = true
-                errorCount = 0
+                errorCount.set(0)
                 "[CS봇] 봇이 활성화되었습니다."
             }
             "!봇끄기" -> {
@@ -156,8 +169,13 @@ object BotEngine {
                 "[CS봇] 봇이 비활성화되었습니다."
             }
             "!에러초기화" -> {
-                errorCount = 0
+                errorCount.set(0)
                 "[CS봇] 에러 카운트가 초기화되었습니다."
+            }
+            "!캐시초기화" -> {
+                blockedRooms.clear()
+                lastResponseTime.clear()
+                "[CS봇] 캐시가 초기화되었습니다."
             }
             else -> return
         }
@@ -182,17 +200,14 @@ object BotEngine {
         return System.currentTimeMillis() - last < cooldownMs
     }
 
-    private fun isOperatingHours(): Boolean {
-        val prefs = App.prefs
-        val cal = Calendar.getInstance()
-        val current = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-        val start = prefs.opStartHour * 60 + prefs.opStartMin
-        val end = prefs.opEndHour * 60 + prefs.opEndMin
-        return current in start..end
-    }
-
-    private fun isWeekday(): Boolean {
-        val day = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        return day in Calendar.MONDAY..Calendar.FRIDAY
+    private fun evictCacheIfNeeded() {
+        if (blockedRooms.size > MAX_CACHE_SIZE) {
+            val cutoff = System.currentTimeMillis() - BLOCK_CACHE_TTL
+            blockedRooms.entries.removeIf { it.value.second < cutoff }
+        }
+        if (lastResponseTime.size > MAX_CACHE_SIZE) {
+            val cutoff = System.currentTimeMillis() - 3_600_000L // 1시간 이전 제거
+            lastResponseTime.entries.removeIf { it.value < cutoff }
+        }
     }
 }

@@ -119,6 +119,11 @@ class MainActivity : AppCompatActivity() {
         LogManager.removeListener(logListener)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        bgExecutor.shutdown()
+    }
+
     private fun refreshUI() {
         val prefs = App.prefs
         val enabled = prefs.botEnabled

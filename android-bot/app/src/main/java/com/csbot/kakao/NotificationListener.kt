@@ -10,6 +10,7 @@ class NotificationListener : NotificationListenerService() {
 
     companion object {
         val replyActions = ConcurrentHashMap<String, ReplySession>()
+        private const val MAX_REPLY_ACTIONS = 200
         var isConnected = false
             private set
     }
@@ -49,6 +50,12 @@ class NotificationListener : NotificationListenerService() {
 
         // Store reply action for ALL rooms (proactive/staff notifications need this)
         replyActions[info.room] = ReplySession(replyAction, System.currentTimeMillis())
+
+        // Evict oldest entries if cache too large
+        if (replyActions.size > MAX_REPLY_ACTIONS) {
+            val oldest = replyActions.entries.minByOrNull { it.value.timestamp }
+            oldest?.let { replyActions.remove(it.key) }
+        }
 
         // Allowed rooms filter (only for bot auto-reply, not proactive)
         val allowed = App.prefs.allowedRooms

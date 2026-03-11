@@ -48,12 +48,13 @@ object ApiClient {
                 .build()
 
             val response = client.newCall(request).execute()
-            if (response.code != 200) {
-                LogManager.e("API HTTP ${response.code}")
+            response.use {
+            if (it.code != 200) {
+                LogManager.e("API HTTP ${it.code}")
                 return null
             }
 
-            val data = JSONObject(response.body?.string() ?: "{}")
+            val data = JSONObject(it.body?.string() ?: "{}")
             MessageResult(
                 answer = if (data.isNull("answer")) null else data.optString("answer", "").takeIf { it.isNotEmpty() && it != "null" },
                 delay = data.optLong("delay", 3000),
@@ -62,6 +63,7 @@ object ApiClient {
                 processingMs = data.optLong("processingMs", 0),
                 reason = if (data.isNull("reason")) null else data.optString("reason", "").takeIf { it.isNotEmpty() && it != "null" }
             )
+            }
         } catch (e: Exception) {
             LogManager.e("API 호출 실패: ${e.message}")
             null
@@ -78,15 +80,16 @@ object ApiClient {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (response.code != 200) return null
+            client.newCall(request).execute().use { response ->
+                if (response.code != 200) return null
 
-            val data = JSONObject(response.body?.string() ?: "{}")
-            StatusResult(
-                status = data.optString("status", "unknown"),
-                operatingHours = data.optBoolean("operatingHours", false),
-                timestamp = data.optString("timestamp", "")
-            )
+                val data = JSONObject(response.body?.string() ?: "{}")
+                StatusResult(
+                    status = data.optString("status", "unknown"),
+                    operatingHours = data.optBoolean("operatingHours", false),
+                    timestamp = data.optString("timestamp", "")
+                )
+            }
         } catch (e: Exception) {
             LogManager.e("서버 상태 확인 실패: ${e.javaClass.simpleName} - ${e.message}")
             null
@@ -103,18 +106,19 @@ object ApiClient {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (response.code != 200) return emptyList()
+            client.newCall(request).execute().use { response ->
+                if (response.code != 200) return emptyList()
 
-            val data = JSONObject(response.body?.string() ?: "{}")
-            val messages = data.optJSONArray("messages") ?: JSONArray()
-            (0 until messages.length()).map { i ->
-                val msg = messages.getJSONObject(i)
-                ProactiveMessage(
-                    id = msg.getInt("id"),
-                    roomId = msg.getString("room_id"),
-                    message = msg.getString("message")
-                )
+                val data = JSONObject(response.body?.string() ?: "{}")
+                val messages = data.optJSONArray("messages") ?: JSONArray()
+                (0 until messages.length()).map { i ->
+                    val msg = messages.getJSONObject(i)
+                    ProactiveMessage(
+                        id = msg.getInt("id"),
+                        roomId = msg.getString("room_id"),
+                        message = msg.getString("message")
+                    )
+                }
             }
         } catch (e: Exception) {
             emptyList()
@@ -160,8 +164,7 @@ object ApiClient {
                 .post(body.toString().toRequestBody(JSON_TYPE))
                 .build()
 
-            val response = client.newCall(request).execute()
-            response.code == 200
+            client.newCall(request).execute().use { it.code == 200 }
         } catch (e: Exception) {
             LogManager.e("기기 등록 실패: ${e.message}")
             false
@@ -185,8 +188,7 @@ object ApiClient {
                 .post(body.toString().toRequestBody(JSON_TYPE))
                 .build()
 
-            val response = client.newCall(request).execute()
-            response.code == 200
+            client.newCall(request).execute().use { it.code == 200 }
         } catch (_: Exception) {
             false
         }
@@ -209,10 +211,11 @@ object ApiClient {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (response.code == 200) {
-                JSONObject(response.body?.string() ?: "{}").optBoolean("blocked", false)
-            } else false
+            client.newCall(request).execute().use { response ->
+                if (response.code == 200) {
+                    JSONObject(response.body?.string() ?: "{}").optBoolean("blocked", false)
+                } else false
+            }
         } catch (_: Exception) {
             false
         }
