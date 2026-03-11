@@ -5,6 +5,7 @@ import {
   ConversationRepository,
   ProactiveRepository,
   IdentityRepository,
+  queryOne as dbQueryOne,
 } from '@kakao-cs-bot/database';
 import { embedder, aiGateway, humanizer } from '@kakao-cs-bot/ai';
 import type { NonTextMessageParams } from './types';
@@ -24,6 +25,7 @@ import { detectCustomerTone, buildToneMirrorInstructions, updateCustomerProfile,
 import {
   createEscalation, getEscalationMessage,
   classifyCategory, recordUncertainty,
+  resolveAssignee,
 } from './escalation-service';
 
 const logger = createLogger('api:webhook:message');
@@ -750,7 +752,40 @@ export async function processMessage(c: any): Promise<Response> {
     const detectedTone = detectCustomerTone(combinedMessage, historyContext);
     updateCustomerProfile(roomId, detectedTone).catch(() => {});
 
-    // 7. 응답 반환 (딜레이: 고객 메시지 읽기 + 응답 작성 시간 시뮬레이션)
+    // 7. 담당자 태그 + 개인톡 알림
+    if (!isStaffSender && answer) {
+      try {
+        const staffCategory = await classifyCategory(combinedMessage);
+        const { staffId: tagStaffId } = await resolveAssignee(roomId, staffCategory);
+        if (tagStaffId) {
+          const tagStaff = await dbQueryOne(
+            'SELECT real_name, kakao_room_id FROM company_staff WHERE id = $1',
+            [tagStaffId]
+          );
+          if (tagStaff?.real_name) {
+            answer = `[담당: ${tagStaff.real_name}] ${answer}`;
+          }
+          // 에스컬레이션이 아닌 경우에만 별도 알림 (에스컬레이션은 createEscalation에서 이미 전송)
+          if (!escalated && tagStaff?.kakao_room_id) {
+            const msgPreview = combinedMessage.length > 100
+              ? combinedMessage.substring(0, 100) + '...' : combinedMessage;
+            await proactiveRepo.createMessage({
+              room_id: tagStaff.kakao_room_id,
+              user_name: tagStaff.real_name,
+              message: `[새 문의 알림]\n톡방: ${roomId}\n고객: ${userName}\n문의: ${msgPreview}`,
+              message_type: 'staff_notification',
+            });
+            logger.info('Staff notification sent', {
+              staffId: tagStaffId, staffRoom: tagStaff.kakao_room_id,
+            });
+          }
+        }
+      } catch (e) {
+        logger.warn('Staff tag failed', { error: String(e) });
+      }
+    }
+
+    // 8. 응답 반환 (딜레이: 고객 메시지 읽기 + 응답 작성 시간 시뮬레이션)
     const baseDelay = humanizer.getResponseDelay();
     const readingTime = Math.min(combinedMessage.length * 50, 5000); // 고객 메시지 읽기 시간 (최대 5초)
     const typingTime = Math.min(answer.length * 30, 10000); // 응답 타이핑 시간 (최대 10초)
