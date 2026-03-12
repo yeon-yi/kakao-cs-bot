@@ -97,7 +97,7 @@ export default function DownloadPage() {
                 <span className="text-blue-400">({timeAgo(info.updatedAt)})</span>
               </div>
               {info.changelog && (
-                <p className="mt-1.5 text-xs text-blue-600 pl-5">{info.changelog}</p>
+                <p className="mt-1.5 text-xs text-blue-600 pl-5 whitespace-pre-line">{info.changelog}</p>
               )}
             </div>
           )}
