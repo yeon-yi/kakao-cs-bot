@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id              Int       @id @default(autoincrement())
+  sourceId        Int       @unique @map("source_id")
+  registrant      String
+  paymentDate     DateTime  @map("payment_date")
+  companyName     String    @map("company_name")
+  representative  String
+  phone           String
+  staffName       String    @map("staff_name")
+  managerName     String    @map("manager_name")
+  branch          String?
+  paymentType       String?   @map("payment_type")
+  cardCompany       String?   @map("card_company")
+  paymentAmount     Int?      @map("payment_amount")
+  installmentMonths String?   @map("installment_months")
+  crawledAt       DateTime  @default(now()) @map("crawled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([paymentDate])
+  @@index([companyName])
+  @@index([managerName])
+  @@index([staffName])
+  @@index([branch])
+  @@map("companies")
+}
+
+model CrawlLog {
+  id              Int       @id @default(autoincrement())
+  status          String
+  newCount        Int       @default(0) @map("new_count")
+  updateCount     Int       @default(0) @map("update_count")
+  totalScanned    Int       @default(0) @map("total_scanned")
+  errorMessage    String?   @map("error_message")
+  duration        Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("crawl_logs")
+}

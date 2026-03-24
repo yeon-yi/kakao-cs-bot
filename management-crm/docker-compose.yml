@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: crm-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /backup/crm-data/postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ws:
+    build: ./ws-server
+    container_name: crm-ws
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      - WS_NOTIFY_SECRET=${WS_NOTIFY_SECRET}
+    restart: unless-stopped
+
+  web:
+    build: .
+    container_name: crm-web
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - TZ=Asia/Seoul
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - JWT_SECRET=${JWT_SECRET}
+      - WS_NOTIFY_URL=http://ws:3001/notify
+      - WS_NOTIFY_SECRET=${WS_NOTIFY_SECRET}
+      - HOMEJEONSAN_ID=${HOMEJEONSAN_ID}
+      - HOMEJEONSAN_PW=${HOMEJEONSAN_PW}
+      - HOMEJEONSAN_PW2=${HOMEJEONSAN_PW2}
+    depends_on:
+      db:
+        condition: service_healthy
+      ws:
+        condition: service_started
+    restart: unless-stopped
+
+  crawler:
+    build:
+      context: ./crawler
+    container_name: crm-crawler
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - CRAWLER_LOGIN_ID=${CRAWLER_LOGIN_ID}
+      - CRAWLER_LOGIN_PW=${CRAWLER_LOGIN_PW}
+      - CRAWLER_TARGET_URL=${CRAWLER_TARGET_URL}
+      - CRAWLER_INTERVAL_MS=${CRAWLER_INTERVAL_MS:-300000}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped

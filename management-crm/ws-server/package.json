@@ -1,0 +1,11 @@
+{
+  "name": "crm-ws-server",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

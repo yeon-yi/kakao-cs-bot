@@ -1,0 +1,7 @@
+node_modules
+.next
+.env*
+.git
+crawler/node_modules
+*.md
+.vscode

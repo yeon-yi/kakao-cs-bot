@@ -1,0 +1,427 @@
+/* ========================================
+   관리 CRM 반응형 스타일 (전체)
+   ======================================== */
+
+/* === 사이드바 스크롤바 === */
+.layout-sidebar nav::-webkit-scrollbar {
+  width: 4px;
+}
+.layout-sidebar nav::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+.layout-sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* === 공통 레이아웃 === */
+.layout-sidebar {
+  width: 240px;
+  min-width: 240px;
+  height: 100vh;
+  background-color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+}
+
+.layout-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  color: #334155;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* === 페이지 공통 === */
+.crm-page {
+  padding: 24px 32px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+}
+.crm-page h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 20px;
+}
+
+/* === 그리드 레이아웃 === */
+.grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.grid-3col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.grid-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+/* === 플렉스 레이아웃 === */
+.flex-row {
+  display: flex;
+  gap: 24px;
+}
+.flex-col-mobile {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* === 분배 패널 === */
+.dist-panel {
+  width: 260px;
+  flex-shrink: 0;
+}
+
+/* === 필터 바 === */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* === 테이블 === */
+.table-wrap {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+.table-wrap::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+.table-wrap::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+.table-wrap th,
+.table-wrap td {
+  white-space: nowrap;
+}
+
+/* === 탭 === */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* === 입력 필드 === */
+.crm-page input,
+.crm-page select {
+  min-height: 38px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+/* === 버튼 === */
+.crm-page button {
+  min-height: 38px;
+}
+
+/* === 모달 === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 400px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* === 결제 관리 그리드 === */
+.payment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* === 카드 공통 === */
+.card-section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+}
+.card-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 16px;
+}
+
+/* === 상세 페이지 헤더 === */
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+/* === 상세 정보 행 === */
+.info-row {
+  display: flex;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.info-row .info-label {
+  width: 100px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.info-row .info-value {
+  font-weight: 500;
+}
+
+/* === 텍스트에어리아 === */
+.crm-page textarea {
+  font-size: 13px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+/* ========================================
+   모바일: 768px 이하
+   ======================================== */
+@media (max-width: 768px) {
+  /* 사이드바 */
+  .layout-sidebar {
+    position: fixed;
+    left: -260px;
+    z-index: 1000;
+    transition: left 0.25s ease;
+  }
+  .layout-sidebar.open {
+    left: 0;
+  }
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  /* 페이지 */
+  .crm-page {
+    padding: 60px 16px 16px;
+  }
+  .crm-page h1 {
+    font-size: 17px;
+    margin-bottom: 16px;
+  }
+
+  /* 그리드 → 1열 */
+  .grid-2col,
+  .grid-3col {
+    grid-template-columns: 1fr;
+  }
+  .grid-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  /* 플렉스 → 세로 */
+  .flex-row {
+    flex-direction: column;
+  }
+  .filter-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .filter-bar input,
+  .filter-bar select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 분배 패널 */
+  .dist-panel {
+    width: 100%;
+    position: relative;
+  }
+
+  /* 테이블 */
+  .table-wrap {
+    margin: 0 -16px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  .table-wrap table {
+    font-size: 11px;
+    min-width: 700px;
+  }
+
+  /* 탭: 가로 스크롤 */
+  .tab-bar {
+    margin-bottom: 16px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .tab-bar button {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  /* 입력 필드: 터치 최적화 */
+  .crm-page input,
+  .crm-page select {
+    min-height: 44px;
+    font-size: 16px; /* iOS 줌 방지 */
+  }
+  .crm-page button {
+    min-height: 44px;
+  }
+
+  /* 모달 */
+  .modal-content {
+    width: 100%;
+    max-width: none;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  /* 결제 관리 그리드 → 1열 */
+  .payment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 카드 섹션 모바일 */
+  .card-section {
+    padding: 16px;
+  }
+  .card-section h2 {
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  /* 상세 헤더 */
+  .detail-header {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .detail-header h1 {
+    font-size: 17px;
+  }
+
+  /* 텍스트에어리아 */
+  .crm-page textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  /* 상세 페이지 상품/결제 폼 최대폭 해제 */
+  .crm-page > div[style*="maxWidth"] {
+    max-width: 100% !important;
+  }
+
+  /* 탭 내 라디오/체크박스 그룹 터치 영역 */
+  .crm-page label input[type="radio"],
+  .crm-page label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* 월별 차트 바 간격 */
+  .crm-page [style*="height: 160px"] {
+    height: 120px !important;
+  }
+
+  /* 메인 콘텐츠 마진 제거 */
+  .crm-main {
+    margin-left: 0 !important;
+  }
+
+  /* 모바일에서 숨기기 유틸리티 */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  /* Tailwind 그리드 오버라이드 */
+  .grid-cols-2.lg\:grid-cols-4,
+  .grid.grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .lg\:grid-cols-5 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ========================================
+   소형 모바일: 480px 이하
+   ======================================== */
+@media (max-width: 480px) {
+  .grid-stats {
+    grid-template-columns: 1fr !important;
+  }
+  .crm-page h1 {
+    font-size: 16px !important;
+  }
+}
+
+/* ========================================
+   태블릿: 769~1024px
+   ======================================== */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .crm-page {
+    padding: 20px 24px;
+  }
+  .grid-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grid-3col {
+    grid-template-columns: 1fr 1fr;
+  }
+  .table-wrap table {
+    min-width: 800px;
+  }
+}

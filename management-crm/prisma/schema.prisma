@@ -1,0 +1,455 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  manager_team
+  branch_manager
+  manager
+  staff
+  upselling_director
+  upselling_chief
+  upselling_staff
+}
+
+enum VideoType {
+  none
+  premium
+  short
+}
+
+enum ReviewType {
+  receipt_only
+  kakao_only
+  both
+}
+
+enum ChannelType {
+  none
+  kakao_channel
+  blog_skin
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String    @map("display_name")
+  role         Role      @default(staff)
+  branch       String?
+  mgmtPosition     String?   @map("mgmt_position") // director, deputy, staff (관리팀만)
+  mgmtTeam         String?   @map("mgmt_team") // '1' or '2' (관리팀 소속 팀)
+  responsibilities String?   // comma-separated: reward,premium_video,short_video,press,insta,seo,cs,homepage
+  createdById  Int?      @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  createdBy        User?              @relation("UserCreator", fields: [createdById], references: [id])
+  createdUsers     User[]             @relation("UserCreator")
+  solutionSettings SolutionSetting[]
+  solutionLogs     SolutionLog[]
+  bulkLogs         SolutionBulkLog[]
+  memos            CompanyMemo[]
+  assignedUpsell   UpsellAssignment[] @relation("AssignedTo")
+  distributedUpsell UpsellAssignment[] @relation("AssignedBy")
+  confirmedReviews KakaoMapReview[]   @relation("ReviewConfirmer")
+  upsellLogs       UpsellLog[]        @relation("UpsellLogger")
+  consultations    Consultation[]
+  pins             UserPin[]
+
+  @@map("users")
+}
+
+model Company {
+  id              Int       @id @default(autoincrement())
+  sourceId        Int       @unique @map("source_id")
+  registrant      String
+  paymentDate     DateTime  @map("payment_date")
+  companyName     String    @map("company_name")
+  representative  String
+  phone           String
+  staffName       String    @map("staff_name")
+  managerName     String    @map("manager_name")
+  branch          String?
+  status          String    @default("completed") // completed, churned
+  placeId         String?   @map("place_id")
+  paymentType       String?   @map("payment_type")
+  cardCompany       String?   @map("card_company")
+  paymentAmount     Int?      @map("payment_amount")
+  installmentMonths String?   @map("installment_months")
+  crawledAt       DateTime  @default(now()) @map("crawled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  setting            SolutionSetting?
+  progress           SolutionProgress?
+  logs               SolutionLog[]
+  memos              CompanyMemo[]
+  consultations      Consultation[]
+  pins               UserPin[]
+  upsellAssignments  UpsellAssignment[]
+
+  @@index([paymentDate])
+  @@index([companyName])
+  @@index([managerName])
+  @@index([staffName])
+  @@index([branch])
+  @@map("companies")
+}
+
+model SolutionSetting {
+  id              Int       @id @default(autoincrement())
+  companyId       Int       @unique @map("company_id")
+  contractStart   DateTime? @map("contract_start")
+  contractEnd     DateTime? @map("contract_end")
+  isHolding       Boolean   @default(false) @map("is_holding")
+  hasReward       Boolean   @default(false) @map("has_reward")
+  blogTarget      Int       @default(0) @map("blog_target")
+  instaTarget     Int       @default(0) @map("insta_target")
+  hasHomepage     Boolean   @default(false) @map("has_homepage")
+  videoType       VideoType @default(none) @map("video_type")
+  lastDeployDate  DateTime? @map("last_deploy_date")
+  setById         Int       @map("set_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  company         Company   @relation(fields: [companyId], references: [id])
+  setBy           User      @relation(fields: [setById], references: [id])
+
+  @@map("solution_settings")
+}
+
+model SolutionProgress {
+  id              Int       @id @default(autoincrement())
+  companyId       Int       @unique @map("company_id")
+  rewardDone      Boolean   @default(false) @map("reward_done")
+  blogCount       Int       @default(0) @map("blog_count")
+  instaCount      Int       @default(0) @map("insta_count")
+  homepageDone    Boolean   @default(false) @map("homepage_done")
+  videoDone       Boolean   @default(false) @map("video_done")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  company         Company   @relation(fields: [companyId], references: [id])
+
+  @@map("solution_progress")
+}
+
+model SolutionLog {
+  id              Int       @id @default(autoincrement())
+  companyId       Int       @map("company_id")
+  userId          Int       @map("user_id")
+  fieldName       String    @map("field_name")
+  oldValue        String?   @map("old_value")
+  newValue        String?   @map("new_value")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  company         Company   @relation(fields: [companyId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("solution_logs")
+}
+
+model CompanyMemo {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  userId    Int      @map("user_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company   Company  @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@map("company_memos")
+}
+
+model Consultation {
+  id              Int       @id @default(autoincrement())
+  companyId       Int       @map("company_id")
+  userId          Int       @map("user_id")
+  contactDate     DateTime  @map("contact_date")
+  contactType     String    @map("contact_type") // phone, visit, kakao, etc.
+  content         String
+  nextContactDate DateTime? @map("next_contact_date")
+  nextAction      String?   @map("next_action")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  company         Company   @relation(fields: [companyId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([nextContactDate])
+  @@map("consultations")
+}
+
+model CrawlLog {
+  id              Int       @id @default(autoincrement())
+  status          String
+  newCount        Int       @default(0) @map("new_count")
+  updateCount     Int       @default(0) @map("update_count")
+  totalScanned    Int       @default(0) @map("total_scanned")
+  errorMessage    String?   @map("error_message")
+  duration        Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("crawl_logs")
+}
+
+model UserPin {
+  userId    Int      @map("user_id")
+  companyId Int      @map("company_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id])
+
+  @@id([userId, companyId])
+  @@map("user_pins")
+}
+
+model SolutionBulkLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  type        String   // 'blog', 'insta', 'homepage', 'video', 'all'
+  totalCount  Int      @default(0) @map("total_count")
+  successCount Int     @default(0) @map("success_count")
+  failCount   Int      @default(0) @map("fail_count")
+  details     String   // JSON string of items with changes
+  createdAt   DateTime @default(now()) @map("created_at")
+  rolledBack  Boolean  @default(false) @map("rolled_back")
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("solution_bulk_logs")
+}
+
+model MgmtTeamBranchHistory {
+  id        Int      @id @default(autoincrement())
+  yearMonth String   @map("year_month") // "2026-03"
+  team      String   // "1" or "2"
+  branch    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([yearMonth, team, branch])
+  @@index([yearMonth])
+  @@index([team])
+  @@map("mgmt_team_branch_history")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+// ============================================================
+// 업셀링팀 모델
+// ============================================================
+
+model UpsellAssignment {
+  id            Int       @id @default(autoincrement())
+  companyId     Int       @map("company_id")
+  assignedToId  Int       @map("assigned_to_id")
+  assignedById  Int       @map("assigned_by_id")
+  assignedAt    DateTime  @default(now()) @map("assigned_at")
+  isExcluded    Boolean   @default(false) @map("is_excluded")
+
+  company       Company   @relation(fields: [companyId], references: [id])
+  assignedTo    User      @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedBy    User      @relation("AssignedBy", fields: [assignedById], references: [id])
+  product       UpsellProduct?
+
+  @@unique([companyId, assignedToId])
+  @@index([assignedToId])
+  @@index([assignedById])
+  @@index([assignedAt])
+  @@map("upsell_assignments")
+}
+
+model UpsellProduct {
+  id                  Int         @id @default(autoincrement())
+  assignmentId        Int         @unique @map("assignment_id")
+  hasPowerlink        Boolean     @default(false) @map("has_powerlink")
+  powerlinkAdId       String?     @map("powerlink_ad_id")
+  powerlinkAdPassword String?     @map("powerlink_ad_password")
+  reviewType          ReviewType  @default(both) @map("review_type")
+  receiptReviewTarget Int         @default(75) @map("receipt_review_target")
+  kakaoReviewTarget   Int         @default(75) @map("kakao_review_target")
+  totalReviewTarget   Int         @default(150) @map("total_review_target")
+  channelType         ChannelType @default(none) @map("channel_type")
+  naverAccount        String?     @map("naver_account")
+  upsellAmount        Int?        @map("upsell_amount")
+  kakaoMapUrl         String?     @map("kakao_map_url")
+  kakaoMapPlaceId     String?     @map("kakao_map_place_id")
+  kakaoMapName        String?     @map("kakao_map_name")
+  // 처리 현황
+  powerlinkDone       Boolean     @default(false) @map("powerlink_done")
+  channelDone         Boolean     @default(false) @map("channel_done")
+  receiptReviewCount  Int         @default(0) @map("receipt_review_count")
+  kakaoReviewCount    Int         @default(0) @map("kakao_review_count")
+  initialReviewCount  Int         @default(0) @map("initial_review_count")
+  exposureCount       Int         @default(0) @map("exposure_count")
+  contractStart       DateTime?   @map("contract_start")
+  contractEnd         DateTime?   @map("contract_end")
+  // 결제 관리
+  paymentStatus       String      @default("unpaid") @map("payment_status") // unpaid, paid, partial
+  paymentMethod       String?     @map("payment_method") // card, cash, mixed
+  paymentCardType     String?     @map("payment_card_type") // new_card, existing_card
+  paymentCardCompany  String?     @map("payment_card_company")
+  paymentCashAmount   Int?        @map("payment_cash_amount")
+  paymentCardAmount   Int?        @map("payment_card_amount")
+  hasTaxInvoice       Boolean     @default(false) @map("has_tax_invoice")
+  paymentNote         String?     @map("payment_note")
+  paidAt              DateTime?   @map("paid_at")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  assignment          UpsellAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  reviews             KakaoMapReview[]
+
+  @@map("upsell_products")
+}
+
+model KakaoMapReview {
+  id            Int       @id @default(autoincrement())
+  productId     Int       @map("product_id")
+  author        String
+  title         String    @default("")
+  content       String
+  rating        Int       @default(0)
+  isOurs        Boolean   @default(false) @map("is_ours")
+  isManual      Boolean   @default(false) @map("is_manual")
+  confirmedAt   DateTime? @map("confirmed_at")
+  confirmedById Int?      @map("confirmed_by_id")
+  fetchedAt     DateTime  @default(now()) @map("fetched_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  product       UpsellProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  confirmedBy   User?         @relation("ReviewConfirmer", fields: [confirmedById], references: [id])
+
+  @@index([productId])
+  @@map("kakao_map_reviews")
+}
+
+model UpsellLog {
+  id        Int      @id @default(autoincrement())
+  companyId Int?     @map("company_id")
+  userId    Int      @map("user_id")
+  action    String
+  details   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation("UpsellLogger", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("upsell_logs")
+}
+
+// ============================================================
+// 기존 서버 모델 (homejeonsan, admin, team 등)
+// ============================================================
+
+model HomejeonsanLog {
+  id            Int       @id @default(autoincrement())
+  action        String    @db.VarChar(50)
+  placeId       String?   @map("place_id") @db.VarChar(20)
+  businessName  String?   @map("business_name") @db.VarChar(200)
+  keyword       String?   @db.VarChar(200)
+  category      String?   @db.VarChar(50)
+  staffName     String?   @map("staff_name") @db.VarChar(50)
+  status        String    @db.VarChar(20)
+  errorMessage  String?   @map("error_message")
+  actorId       Int       @map("actor_id")
+  actorName     String    @map("actor_name") @db.VarChar(100)
+  actorBranch   String?   @map("actor_branch") @db.VarChar(20)
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  @@index([createdAt], map: "idx_hj_logs_created")
+  @@map("homejeonsan_logs")
+}
+
+model AdminLog {
+  id          Int       @id @default(autoincrement())
+  action      String    @db.VarChar(50)
+  targetId    Int?      @map("target_id")
+  targetName  String?   @map("target_name") @db.VarChar(100)
+  detail      String?
+  actorId     Int       @map("actor_id")
+  actorName   String    @map("actor_name") @db.VarChar(100)
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  @@index([createdAt], map: "idx_admin_logs_created")
+  @@map("admin_logs")
+}
+
+model KeywordCache {
+  id            Int       @id @default(autoincrement())
+  placeId       String    @map("place_id") @db.VarChar(20)
+  businessName  String?   @map("business_name") @db.VarChar(200)
+  keyword       String?   @db.VarChar(200)
+  rank          String?   @db.VarChar(20)
+  staffName     String?   @map("staff_name") @db.VarChar(50)
+  category      String?   @db.VarChar(50)
+  adType        String?   @map("ad_type") @db.VarChar(20)
+  rowId         String?   @map("row_id") @db.VarChar(20)
+  cachedAt      DateTime? @default(now()) @map("cached_at")
+
+  @@index([placeId], map: "idx_kw_cache_place")
+  @@map("keyword_cache")
+}
+
+model LoginAttempt {
+  id          Int       @id @default(autoincrement())
+  username    String    @db.VarChar(50)
+  ipAddress   String?   @map("ip_address") @db.VarChar(45)
+  success     Boolean
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  @@index([username, createdAt], map: "idx_la_username")
+  @@map("login_attempts")
+}
+
+model TeamAssignment {
+  id            Int       @id @default(autoincrement())
+  yearMonth     String    @map("year_month") @db.VarChar(7)
+  team          Int
+  role          String    @db.VarChar(30)
+  staffName     String    @map("staff_name") @db.VarChar(50)
+  managerName   String?   @map("manager_name") @db.VarChar(50)
+  branch        String?   @db.VarChar(20)
+  isTrainee     Boolean?  @default(false) @map("is_trainee")
+  createdAt     DateTime? @default(now()) @map("created_at")
+  updatedAt     DateTime? @default(now()) @map("updated_at")
+
+  @@index([yearMonth], map: "idx_ta_month")
+  @@index([staffName], map: "idx_ta_staff")
+  @@index([team], map: "idx_ta_team")
+  @@map("team_assignments")
+}
+
+model TeamAssignmentLog {
+  id          Int       @id @default(autoincrement())
+  yearMonth   String    @map("year_month") @db.VarChar(7)
+  action      String    @db.VarChar(20)
+  staffName   String?   @map("staff_name") @db.VarChar(50)
+  detail      String?
+  actorId     Int       @map("actor_id")
+  actorName   String    @map("actor_name") @db.VarChar(50)
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  @@map("team_assignment_logs")
+}
