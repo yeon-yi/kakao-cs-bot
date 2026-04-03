@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 // 계정 관리 접근 가능 역할
 function requireAccountAccess(request: NextRequest) {
   const auth = requireAuth(request);
-  const allowed = ['admin', 'manager_team', 'upselling_director', 'upselling_chief'];
+  const allowed = ['admin', 'manager_team', 'branch_manager', 'upselling_director', 'upselling_chief', 'renewal_director', 'renewal_chief'];
   if (!allowed.includes(auth.role)) {
     throw new Error('Forbidden');
   }
@@ -28,10 +28,17 @@ export async function GET(request: NextRequest) {
 
     // 역할별 조회 범위 (접근 제어)
     let allowedRoles: string[] | null = null; // null = 전체
-    if (auth.role === 'upselling_director') {
+    if (auth.role === 'branch_manager') {
+      allowedRoles = ['branch_manager', 'manager', 'staff'];
+      where.branch = auth.branch; // 자기 지사만
+    } else if (auth.role === 'upselling_director') {
       allowedRoles = ['upselling_director', 'upselling_chief', 'upselling_staff'];
     } else if (auth.role === 'upselling_chief') {
       allowedRoles = ['upselling_staff'];
+    } else if (auth.role === 'renewal_director') {
+      allowedRoles = ['renewal_director', 'renewal_chief', 'renewal_staff'];
+    } else if (auth.role === 'renewal_chief') {
+      allowedRoles = ['renewal_staff'];
     }
     // admin, manager_team은 전체 조회
 
@@ -74,6 +81,7 @@ export async function GET(request: NextRequest) {
           mgmtPosition: true,
           mgmtTeam: true,
           responsibilities: true,
+          kakaoRoomId: true,
           createdAt: true,
           lastLoginAt: true,
           createdById: true,
@@ -128,15 +136,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    const validRoles = ['admin', 'manager_team', 'manager', 'staff', 'upselling_director', 'upselling_chief', 'upselling_staff'];
+    const validRoles = ['admin', 'manager_team', 'branch_manager', 'manager', 'staff', 'upselling_director', 'upselling_chief', 'upselling_staff', 'renewal_director', 'renewal_chief', 'renewal_staff'];
     if (!validRoles.includes(role)) {
       return NextResponse.json({ message: '유효하지 않은 역할입니다.' }, { status: 400 });
     }
 
     // 역할 계층 검증
     const upsellRoles = ['upselling_director', 'upselling_chief', 'upselling_staff'];
+    const renewalRoles = ['renewal_director', 'renewal_chief', 'renewal_staff'];
     if (auth.role === 'admin') {
       // admin은 모든 역할 생성 가능
+    } else if (renewalRoles.includes(role)) {
+      if (auth.role === 'renewal_director' && role === 'renewal_director') {
+        return NextResponse.json({ message: '동일 직책은 생성할 수 없습니다.' }, { status: 403 });
+      }
+      if (auth.role === 'renewal_chief' && role !== 'renewal_staff') {
+        return NextResponse.json({ message: '사원만 생성할 수 있습니다.' }, { status: 403 });
+      }
+      if (!['renewal_director', 'renewal_chief'].includes(auth.role)) {
+        return NextResponse.json({ message: '재계약팀 계정 생성 권한이 없습니다.' }, { status: 403 });
+      }
     } else if (upsellRoles.includes(role)) {
       // 업셀링 역할: 상위만 생성 가능
       if (auth.role === 'upselling_director' && role === 'upselling_director') {
@@ -169,6 +188,11 @@ export async function POST(request: NextRequest) {
       } else {
         return NextResponse.json({ message: '관리팀 계정 생성 권한이 없습니다.' }, { status: 403 });
       }
+    } else if (auth.role === 'branch_manager') {
+      // 지사장은 자기 지사의 manager, staff만 생성 가능
+      if (!['manager', 'staff'].includes(role)) {
+        return NextResponse.json({ message: '간부 또는 영업자만 생성할 수 있습니다.' }, { status: 403 });
+      }
     } else {
       // 영업팀 역할(manager, staff)은 admin만
       return NextResponse.json({ message: '영업팀 계정은 관리자만 생성 가능합니다.' }, { status: 403 });
@@ -176,9 +200,10 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 업셀링 역할은 지사를 "본사"로 고정
+    // 업셀링/재계약 역할은 지사를 "본사"로 고정, 지사장은 자기 지사로 고정
     const isUpsellRole = upsellRoles.includes(role);
-    const finalBranch = isUpsellRole ? '본사' : (branch || null);
+    const isRenewalRole = renewalRoles.includes(role);
+    const finalBranch = (isUpsellRole || isRenewalRole) ? '본사' : auth.role === 'branch_manager' ? auth.branch : (branch || null);
 
     const user = await prisma.user.create({
       data: {
@@ -205,6 +230,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Audit log (non-blocking)
+    prisma.adminLog.create({
+      data: {
+        action: 'user_create',
+        targetId: user.id,
+        targetName: displayName,
+        detail: role,
+        actorId: auth.userId,
+        actorName: auth.displayName,
+      },
+    }).catch(() => {});
+
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -224,7 +261,7 @@ export async function PUT(request: NextRequest) {
     const auth = requireAccountAccess(request);
 
     const body = await request.json();
-    const { id, displayName, username, role, branch, password, mgmtPosition, mgmtTeam, responsibilities } = body;
+    const { id, displayName, username, role, branch, password, mgmtPosition, mgmtTeam, responsibilities, kakaoRoomId } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -250,9 +287,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // 지사장은 자기 지사의 manager/staff만 수정 가능
+    if (auth.role === 'branch_manager') {
+      if (!['manager', 'staff'].includes(existing.role) || existing.branch !== auth.branch) {
+        return NextResponse.json({ message: '자기 지사의 간부/영업자만 수정할 수 있습니다.' }, { status: 403 });
+      }
+    }
+
     // 역할 변경 권한 체크 — admin만 역할 변경 가능, 그 외는 본인 범위 내에서만
     if (role && role !== existing.role) {
-      const validRoles = ['admin', 'manager_team', 'manager', 'staff', 'upselling_director', 'upselling_chief', 'upselling_staff'];
+      const validRoles = ['admin', 'manager_team', 'branch_manager', 'manager', 'staff', 'upselling_director', 'upselling_chief', 'upselling_staff', 'renewal_director', 'renewal_chief', 'renewal_staff'];
       if (!validRoles.includes(role)) {
         return NextResponse.json({ message: '유효하지 않은 역할입니다.' }, { status: 400 });
       }
@@ -294,11 +338,13 @@ export async function PUT(request: NextRequest) {
       if (mgmtPosition !== undefined) updateData.mgmtPosition = mgmtPosition || null;
       if (mgmtTeam !== undefined) updateData.mgmtTeam = mgmtTeam || null;
       if (responsibilities !== undefined) updateData.responsibilities = responsibilities || null;
+      if (kakaoRoomId !== undefined) updateData.kakaoRoomId = kakaoRoomId || null;
     } else {
       // Clear mgmt fields when switching away from manager_team
       updateData.mgmtPosition = null;
       updateData.mgmtTeam = null;
       updateData.responsibilities = null;
+      updateData.kakaoRoomId = null;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -324,6 +370,19 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    // Audit log (non-blocking)
+    const changedFields = Object.keys(updateData).filter(k => k !== 'passwordHash').join(', ');
+    prisma.adminLog.create({
+      data: {
+        action: 'user_update',
+        targetId: parsedId,
+        targetName: displayName || existing.displayName,
+        detail: changedFields || 'password',
+        actorId: auth.userId,
+        actorName: auth.displayName,
+      },
+    }).catch(() => {});
+
     return NextResponse.json({ user });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -337,12 +396,12 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/users — Delete user (admin only)
+// DELETE /api/users — Delete user (admin + branch_manager for own branch)
 export async function DELETE(request: NextRequest) {
   try {
     const auth = requireAccountAccess(request);
-    if (auth.role !== 'admin') {
-      return NextResponse.json({ message: '사용자 삭제는 시스템 관리자만 가능합니다.' }, { status: 403 });
+    if (auth.role !== 'admin' && auth.role !== 'branch_manager') {
+      return NextResponse.json({ message: '사용자 삭제 권한이 없습니다.' }, { status: 403 });
     }
     const { searchParams } = request.nextUrl;
     const id = searchParams.get('id');
@@ -383,6 +442,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // 지사장은 자기 지사의 manager/staff만 삭제 가능
+    if (auth.role === 'branch_manager') {
+      if (!['manager', 'staff'].includes(existing.role) || existing.branch !== auth.branch) {
+        return NextResponse.json({ message: '자기 지사의 간부/영업자만 삭제할 수 있습니다.' }, { status: 403 });
+      }
+    }
+
     // Check for FK references before deletion
     const settingCount = await prisma.solutionSetting.count({
       where: { setById: userId },
@@ -401,6 +467,18 @@ export async function DELETE(request: NextRequest) {
     await prisma.user.delete({
       where: { id: userId },
     });
+
+    // Audit log (non-blocking)
+    prisma.adminLog.create({
+      data: {
+        action: 'user_delete',
+        targetId: userId,
+        targetName: existing.displayName,
+        detail: null,
+        actorId: auth.userId,
+        actorName: auth.displayName,
+      },
+    }).catch(() => {});
 
     return NextResponse.json({ message: '사용자가 삭제되었습니다.' });
   } catch (error) {

@@ -12,6 +12,7 @@ interface User {
   mgmtPosition: string | null;
   mgmtTeam: string | null;
   responsibilities: string | null;
+  kakaoRoomId: string | null;
   createdAt: string;
   lastLoginAt: string | null;
   createdBy: { displayName: string } | null;
@@ -21,11 +22,15 @@ interface User {
 const ROLE_LABELS: Record<string, string> = {
   admin: '관리자',
   manager_team: '관리팀',
+  branch_manager: '지사장',
   manager: '간부',
   staff: '영업자',
   upselling_director: '업셀링 실장',
   upselling_chief: '업셀링 주임',
   upselling_staff: '업셀링 사원',
+  renewal_director: '재계약 실장',
+  renewal_chief: '재계약 부실장',
+  renewal_staff: '재계약 사원',
 };
 
 const MGMT_POSITIONS = [
@@ -55,11 +60,14 @@ const ROLE_OPTIONS = [
   { value: 'upselling_director', label: '업셀링 실장' },
   { value: 'upselling_chief', label: '업셀링 주임' },
   { value: 'upselling_staff', label: '업셀링 사원' },
+  { value: 'renewal_director', label: '재계약 실장' },
+  { value: 'renewal_chief', label: '재계약 부실장' },
+  { value: 'renewal_staff', label: '재계약 사원' },
 ];
 
 const BRANCH_OPTIONS = ['인천', '수원', '동탄', '용인', '부산', '본사'];
 
-type TeamType = 'admin' | 'manager_team' | 'sales' | 'upsell';
+type TeamType = 'admin' | 'manager_team' | 'sales' | 'upsell' | 'renewal';
 
 interface FormData {
   displayName: string;
@@ -71,6 +79,7 @@ interface FormData {
   mgmtTeam: string;
   mgmtPosition: string;
   responsibilities: string[];
+  kakaoRoomId: string;
 }
 
 const TEAM_ROLE_MAP: Record<TeamType, Array<{ value: string; label: string }>> = {
@@ -90,15 +99,21 @@ const TEAM_ROLE_MAP: Record<TeamType, Array<{ value: string; label: string }>> =
     { value: 'upselling_chief', label: '주임' },
     { value: 'upselling_staff', label: '사원' },
   ],
+  renewal: [
+    { value: 'renewal_director', label: '실장' },
+    { value: 'renewal_chief', label: '부실장' },
+    { value: 'renewal_staff', label: '사원' },
+  ],
 };
 
 // 지사 고정 여부: admin, manager_team, upselling_* → 본사 고정
-const FIXED_BRANCH_ROLES = ['admin', 'manager_team', 'upselling_director', 'upselling_chief', 'upselling_staff'];
+const FIXED_BRANCH_ROLES = ['admin', 'manager_team', 'upselling_director', 'upselling_chief', 'upselling_staff', 'renewal_director', 'renewal_chief', 'renewal_staff'];
 
 function getTeamFromRole(role: string): TeamType {
   if (role === 'admin') return 'admin';
   if (role === 'manager_team') return 'manager_team';
   if (role.startsWith('upselling_')) return 'upsell';
+  if (role.startsWith('renewal_')) return 'renewal';
   return 'sales';
 }
 
@@ -122,13 +137,15 @@ const emptyForm: FormData = {
   mgmtTeam: '',
   mgmtPosition: '',
   responsibilities: [],
+  kakaoRoomId: '',
 };
 
-type TeamTab = 'all' | 'management' | 'sales' | 'upsell';
+type TeamTab = 'all' | 'management' | 'sales' | 'upsell' | 'renewal';
 
 const MANAGEMENT_ROLES = ['admin', 'manager_team'];
 const SALES_ROLES = ['branch_manager', 'manager', 'staff'];
 const UPSELL_ROLE_VALUES = ['upselling_director', 'upselling_chief', 'upselling_staff'];
+const RENEWAL_ROLE_VALUES = ['renewal_director', 'renewal_chief', 'renewal_staff'];
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -141,6 +158,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [authRole, setAuthRole] = useState('');
+  const [authBranch, setAuthBranch] = useState('');
   const pageSize = 50;
 
   // Modal state
@@ -155,11 +173,18 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Toast
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   // Auth user role 가져오기
   useEffect(() => {
     fetch('/api/auth', { credentials: 'include' })
       .then(r => r.json())
-      .then(d => setAuthRole(d.user?.role || ''))
+      .then(d => { setAuthRole(d.user?.role || ''); setAuthBranch(d.user?.branch || ''); })
       .catch(() => {});
   }, []);
 
@@ -177,6 +202,8 @@ export default function UsersPage() {
         params.set('roles', SALES_ROLES.join(','));
       } else if (teamTab === 'upsell') {
         params.set('roles', UPSELL_ROLE_VALUES.join(','));
+      } else if (teamTab === 'renewal') {
+        params.set('roles', RENEWAL_ROLE_VALUES.join(','));
       }
       const res = await fetch(`/api/users?${params}`, { credentials: 'include' });
       if (!res.ok) throw new Error('계정 목록을 불러올 수 없습니다.');
@@ -195,7 +222,10 @@ export default function UsersPage() {
   }, [fetchUsers]);
 
   function openCreateModal() {
-    setForm(emptyForm);
+    const initialForm = authRole === 'branch_manager'
+      ? { ...emptyForm, team: 'sales' as TeamType, role: 'manager', branch: authBranch }
+      : emptyForm;
+    setForm(initialForm);
     setFormError('');
     setModalMode('create');
     setEditingUserId(null);
@@ -213,6 +243,7 @@ export default function UsersPage() {
       mgmtTeam: user.mgmtTeam || '',
       mgmtPosition: user.mgmtPosition || '',
       responsibilities: user.responsibilities ? user.responsibilities.split(',') : [],
+      kakaoRoomId: user.kakaoRoomId || '',
     });
     setFormError('');
     setModalMode('edit');
@@ -256,6 +287,7 @@ export default function UsersPage() {
         mgmtTeam: form.role === 'manager_team' ? form.mgmtTeam : null,
         mgmtPosition: form.role === 'manager_team' ? form.mgmtPosition : null,
         responsibilities: form.role === 'manager_team' ? form.responsibilities.join(',') : null,
+        kakaoRoomId: form.role === 'manager_team' ? form.kakaoRoomId : null,
       };
       if (!isCreate) {
         body.id = editingUserId;
@@ -300,7 +332,7 @@ export default function UsersPage() {
       setDeleteTarget(null);
       fetchUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '삭제 중 오류가 발생했습니다.');
+      showToast(err instanceof Error ? err.message : '삭제 중 오류가 발생했습니다.', 'error');
     } finally {
       setDeleteLoading(false);
     }
@@ -343,6 +375,7 @@ export default function UsersPage() {
             { value: 'management' as const, label: '관리팀', color: '#f59e0b' },
             { value: 'sales' as const, label: '영업팀', color: '#2563eb' },
             { value: 'upsell' as const, label: '업셀링팀', color: '#8b5cf6' },
+            { value: 'renewal' as const, label: '재계약팀', color: '#ec4899' },
           ]).map((t) => (
             <button key={t.value} onClick={() => { setTeamTab(t.value); setRoleFilter(''); setPage(1); }}
               style={{ padding: '10px 20px', fontSize: 14, fontWeight: teamTab === t.value ? 600 : 400, color: teamTab === t.value ? t.color : '#64748b', background: 'none', border: 'none', borderBottom: teamTab === t.value ? `2px solid ${t.color}` : '2px solid transparent', cursor: 'pointer' }}>
@@ -371,6 +404,7 @@ export default function UsersPage() {
               if (teamTab === 'management') return MANAGEMENT_ROLES.includes(r.value);
               if (teamTab === 'sales') return SALES_ROLES.includes(r.value);
               if (teamTab === 'upsell') return UPSELL_ROLE_VALUES.includes(r.value);
+              if (teamTab === 'renewal') return RENEWAL_ROLE_VALUES.includes(r.value);
               return true;
             })
             .map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -496,6 +530,7 @@ export default function UsersPage() {
         >
           <div
             className="bg-white w-full max-w-[440px] mx-4 shadow-lg"
+            style={{ maxHeight: '85vh', overflow: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
@@ -557,7 +592,15 @@ export default function UsersPage() {
                   />
                 </div>
 
-                {/* 소속 선택 */}
+                {/* 소속 선택 — 지사장은 영업팀 고정 */}
+                {authRole === 'branch_manager' ? (
+                  <div>
+                    <label className="block text-[13px] font-medium text-[#334155] mb-1.5">소속</label>
+                    <div className="w-full h-10 px-3 flex items-center text-[13.5px] text-[#94a3b8] border border-[#e2e8f0] bg-[#f8fafc]">
+                      영업팀 (고정)
+                    </div>
+                  </div>
+                ) : (
                 <div>
                   <label className="block text-[13px] font-medium text-[#334155] mb-1.5">소속</label>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -566,6 +609,7 @@ export default function UsersPage() {
                       { value: 'manager_team' as const, label: '관리팀', color: '#f59e0b' },
                       { value: 'sales' as const, label: '영업팀', color: '#2563eb' },
                       { value: 'upsell' as const, label: '업셀링팀', color: '#8b5cf6' },
+                      { value: 'renewal' as const, label: '재계약팀', color: '#ec4899' },
                     ]).map((t) => (
                       <button key={t.value} type="button"
                         onClick={() => {
@@ -585,6 +629,7 @@ export default function UsersPage() {
                     ))}
                   </div>
                 </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   {/* 역할 (소속에 따라 옵션 변경) */}
@@ -599,16 +644,23 @@ export default function UsersPage() {
                       }}
                       className="w-full h-10 px-3 text-[13.5px] text-[#0f172a] border border-[#e2e8f0] bg-white outline-none focus:border-[#2563eb] transition-colors duration-100 cursor-pointer"
                     >
-                      {TEAM_ROLE_MAP[form.team].map((opt) => (
+                      {(authRole === 'branch_manager'
+                        ? [{ value: 'manager', label: '간부' }, { value: 'staff', label: '영업자' }]
+                        : TEAM_ROLE_MAP[form.team]
+                      ).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* 지사 (관리자/관리팀/업셀링 → 본사 고정) */}
+                  {/* 지사 (관리자/관리팀/업셀링 → 본사 고정, 지사장 → 자기 지사 고정) */}
                   <div>
                     <label className="block text-[13px] font-medium text-[#334155] mb-1.5">지사</label>
-                    {FIXED_BRANCH_ROLES.includes(form.role) ? (
+                    {authRole === 'branch_manager' ? (
+                      <div className="w-full h-10 px-3 flex items-center text-[13.5px] text-[#94a3b8] border border-[#e2e8f0] bg-[#f8fafc]">
+                        {authBranch} (고정)
+                      </div>
+                    ) : FIXED_BRANCH_ROLES.includes(form.role) ? (
                       <div className="w-full h-10 px-3 flex items-center text-[13.5px] text-[#94a3b8] border border-[#e2e8f0] bg-[#f8fafc]">
                         본사 (고정)
                       </div>
@@ -687,6 +739,18 @@ export default function UsersPage() {
                         ))}
                       </div>
                     </div>
+                    {/* 카카오톡 알림 방 ID */}
+                    <div>
+                      <label className="block text-[13px] font-medium text-[#334155] mb-1.5">카카오톡 알림방 ID</label>
+                      <input
+                        type="text"
+                        placeholder="봇과의 1:1 카톡방 이름"
+                        value={form.kakaoRoomId}
+                        onChange={(e) => setForm({ ...form, kakaoRoomId: e.target.value })}
+                        className="w-full h-9 px-3 text-[13px] text-[#0f172a] border border-[#e2e8f0] bg-white outline-none focus:border-[#2563eb]"
+                      />
+                      <p className="text-[11px] text-[#94a3b8] mt-1">솔루션 진행요청 시 카톡 알림을 받을 방 이름</p>
+                    </div>
                   </>
                 )}
               </div>
@@ -722,6 +786,19 @@ export default function UsersPage() {
 
       {/* 페이지네이션 */}
       <Pagination page={page} totalPages={Math.ceil(total / pageSize)} onPageChange={setPage} />
+
+      {/* 토스트 메시지 */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          padding: '12px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: 500,
+          color: '#fff',
+          backgroundColor: toast.type === 'error' ? '#dc2626' : '#16a34a',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        }}>
+          {toast.message}
+        </div>
+      )}
 
       {/* Delete confirmation dialog */}
       {deleteTarget && (
@@ -785,6 +862,9 @@ function RoleBadge({ role, label: overrideLabel }: { role: string; label?: strin
     upselling_director: { label: '업셀링 실장', bg: '#f5f3ff', text: '#7c3aed' },
     upselling_chief: { label: '업셀링 주임', bg: '#e0f2fe', text: '#0284c7' },
     upselling_staff: { label: '업셀링 사원', bg: '#ecfdf5', text: '#059669' },
+    renewal_director: { label: '재계약 실장', bg: '#fce7f3', text: '#ec4899' },
+    renewal_chief: { label: '재계약 부실장', bg: '#fce7f3', text: '#ec4899' },
+    renewal_staff: { label: '재계약 사원', bg: '#fce7f3', text: '#ec4899' },
   };
   const style = map[role] || { label: role, bg: '#f1f5f9', text: '#64748b' };
 
