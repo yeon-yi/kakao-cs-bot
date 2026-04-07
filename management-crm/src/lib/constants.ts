@@ -7,6 +7,9 @@ export const ROLES = {
   UPSELLING_DIRECTOR: 'upselling_director',
   UPSELLING_CHIEF: 'upselling_chief',
   UPSELLING_STAFF: 'upselling_staff',
+  RENEWAL_DIRECTOR: 'renewal_director',
+  RENEWAL_CHIEF: 'renewal_chief',
+  RENEWAL_STAFF: 'renewal_staff',
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -17,15 +20,24 @@ export const UPSELLING_ROLES = [
   ROLES.UPSELLING_STAFF,
 ] as const;
 
+export const RENEWAL_ROLES = [
+  ROLES.RENEWAL_DIRECTOR,
+  ROLES.RENEWAL_CHIEF,
+  ROLES.RENEWAL_STAFF,
+] as const;
+
 export const ROLE_LABELS: Record<string, string> = {
   admin: '시스템관리자',
   manager_team: '관리팀',
-  branch_manager: '지사장',
+  branch_manager: '과장/차장',
   manager: '간부',
   staff: '영업자',
   upselling_director: '업셀링 실장',
   upselling_chief: '업셀링 주임',
   upselling_staff: '업셀링 사원',
+  renewal_director: '재계약 실장',
+  renewal_chief: '재계약 부실장',
+  renewal_staff: '재계약 사원',
 };
 
 export const REVIEW_TYPE_LABELS: Record<string, string> = {
@@ -46,6 +58,7 @@ export const BRANCHES = [
   '동탄',
   '용인',
   '부산',
+  '안산',
   '본사',
 ] as const;
 
@@ -62,7 +75,9 @@ export const BRANCH_MAP: Record<string, string> = {
   '용인플레이스': '용인',
   '부산마스터': '부산',
   '부산플레이스': '부산',
-  '안산플레이스': '본사',
+  '안산플레이스': '안산',
+  '안산마스터': '안산',
+  '관리자': '본사',
   'place1': '본사',
   '플레이스팀': '본사',
 };

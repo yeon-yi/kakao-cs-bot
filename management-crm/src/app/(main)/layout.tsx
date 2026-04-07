@@ -564,7 +564,7 @@ const TUTORIAL_CONTENT: Record<string, { title: string; steps: string[] }> = {
     ],
   },
   branch_manager: {
-    title: '지사장 사용 가이드',
+    title: '과장/차장 사용 가이드',
     steps: [
       '업체 관리: 본인 지사의 전체 업체를 조회하고 관리합니다.',
       '솔루션 설정: 업체별 솔루션을 설정하고 진행 상태를 확인합니다.',

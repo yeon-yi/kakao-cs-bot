@@ -22,7 +22,7 @@ interface User {
 const ROLE_LABELS: Record<string, string> = {
   admin: '관리자',
   manager_team: '관리팀',
-  branch_manager: '지사장',
+  branch_manager: '과장/차장',
   manager: '간부',
   staff: '영업자',
   upselling_director: '업셀링 실장',
@@ -54,7 +54,7 @@ const RESPONSIBILITY_OPTIONS = [
 const ROLE_OPTIONS = [
   { value: 'admin', label: '관리자' },
   { value: 'manager_team', label: '관리팀' },
-  { value: 'branch_manager', label: '지사장' },
+  { value: 'branch_manager', label: '과장/차장' },
   { value: 'manager', label: '간부' },
   { value: 'staff', label: '영업자' },
   { value: 'upselling_director', label: '업셀링 실장' },
@@ -90,7 +90,7 @@ const TEAM_ROLE_MAP: Record<TeamType, Array<{ value: string; label: string }>> =
     { value: 'manager_team', label: '관리팀' },
   ],
   sales: [
-    { value: 'branch_manager', label: '지사장' },
+    { value: 'branch_manager', label: '과장/차장' },
     { value: 'manager', label: '간부' },
     { value: 'staff', label: '영업자' },
   ],
@@ -592,7 +592,7 @@ export default function UsersPage() {
                   />
                 </div>
 
-                {/* 소속 선택 — 지사장은 영업팀 고정 */}
+                {/* 소속 선택 — 과장/차장은 영업팀 고정 */}
                 {authRole === 'branch_manager' ? (
                   <div>
                     <label className="block text-[13px] font-medium text-[#334155] mb-1.5">소속</label>
@@ -653,7 +653,7 @@ export default function UsersPage() {
                     </select>
                   </div>
 
-                  {/* 지사 (관리자/관리팀/업셀링 → 본사 고정, 지사장 → 자기 지사 고정) */}
+                  {/* 지사 (관리자/관리팀/업셀링 → 본사 고정, 과장/차장 → 자기 지사 고정) */}
                   <div>
                     <label className="block text-[13px] font-medium text-[#334155] mb-1.5">지사</label>
                     {authRole === 'branch_manager' ? (

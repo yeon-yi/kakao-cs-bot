@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: '관리팀 계정 생성 권한이 없습니다.' }, { status: 403 });
       }
     } else if (auth.role === 'branch_manager') {
-      // 지사장은 자기 지사의 manager, staff만 생성 가능
+      // 과장/차장은 자기 지사의 manager, staff만 생성 가능
       if (!['manager', 'staff'].includes(role)) {
         return NextResponse.json({ message: '간부 또는 영업자만 생성할 수 있습니다.' }, { status: 403 });
       }
@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 업셀링/재계약 역할은 지사를 "본사"로 고정, 지사장은 자기 지사로 고정
+    // 업셀링/재계약 역할은 지사를 "본사"로 고정, 과장/차장은 자기 지사로 고정
     const isUpsellRole = upsellRoles.includes(role);
     const isRenewalRole = renewalRoles.includes(role);
     const finalBranch = (isUpsellRole || isRenewalRole) ? '본사' : auth.role === 'branch_manager' ? auth.branch : (branch || null);
@@ -287,7 +287,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 지사장은 자기 지사의 manager/staff만 수정 가능
+    // 과장/차장은 자기 지사의 manager/staff만 수정 가능
     if (auth.role === 'branch_manager') {
       if (!['manager', 'staff'].includes(existing.role) || existing.branch !== auth.branch) {
         return NextResponse.json({ message: '자기 지사의 간부/영업자만 수정할 수 있습니다.' }, { status: 403 });
@@ -442,7 +442,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 지사장은 자기 지사의 manager/staff만 삭제 가능
+    // 과장/차장은 자기 지사의 manager/staff만 삭제 가능
     if (auth.role === 'branch_manager') {
       if (!['manager', 'staff'].includes(existing.role) || existing.branch !== auth.branch) {
         return NextResponse.json({ message: '자기 지사의 간부/영업자만 삭제할 수 있습니다.' }, { status: 403 });
