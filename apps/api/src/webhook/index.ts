@@ -107,13 +107,36 @@ webhookApp.post('/device/heartbeat', async (c) => {
   }
 });
 
+// ===================== 외부 알림 (관리 CRM → 카카오톡) =====================
+
+webhookApp.post('/notify', async (c) => {
+  try {
+    const { roomId, message, messageType } = await c.req.json();
+    if (!roomId || !message) {
+      return c.json({ error: 'roomId, message 필수' }, 400);
+    }
+    await proactiveRepo.createMessage({
+      room_id: roomId,
+      message,
+      message_type: messageType || 'staff_notification',
+      status: 'pending',
+      scheduled_at: new Date().toISOString(),
+    });
+    logger.info('External notification created', { roomId, messageType });
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error('Notify error', { error: String(error) });
+    return c.json({ error: 'Failed to create notification' }, 500);
+  }
+});
+
 // ===================== 프로액티브 메시징 =====================
 
 webhookApp.get('/proactive/pending', async (c) => {
   try {
     const limit = parseInt(c.req.query('limit') || '5');
     const messages = await proactiveRepo.getPendingMessages(limit);
-    return c.json({ messages });
+    return c.json({ messages, poll_interval_ms: 10000 });
   } catch (error) {
     logger.error('Proactive pending error', { error: String(error) });
     return c.json({ messages: [], error: 'Failed to fetch pending messages' });
