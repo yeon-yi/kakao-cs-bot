@@ -136,6 +136,7 @@ export async function POST(
             }
           }
 
+          // step 강등 방지: pending 로그는 status='success' 유지, 실패 시 errorMessage에만 기록
           await prisma.homejeonsanLog.update({
             where: { id: pendingLog.id },
             data: {
@@ -157,11 +158,11 @@ export async function POST(
               contractStart: contractStart.toISOString().split('T')[0],
               months,
             });
+            // step 강등 방지: 실패해도 status='success' 유지, errorMessage에만 실패 사유 기록
             await prisma.homejeonsanLog.update({
               where: { id: pendingLog.id },
               data: {
-                status: result.success ? 'success' : 'failed',
-                errorMessage: result.success ? null : result.message,
+                errorMessage: result.success ? null : `등록 실패 (수동 등록 필요): ${result.message}`,
               },
             });
           } else {
@@ -181,11 +182,11 @@ export async function POST(
         await updateStep(companyId).catch(() => {});
       } catch (err) {
         console.error('[advance-step background] failed:', err);
+        // step 강등 방지: 예외 시에도 status='success' 유지, errorMessage에만 기록
         await prisma.homejeonsanLog.update({
           where: { id: pendingLog.id },
           data: {
-            status: 'failed',
-            errorMessage: `백그라운드 처리 실패: ${err instanceof Error ? err.message : String(err)}`,
+            errorMessage: `백그라운드 처리 실패 (수동 등록 필요): ${err instanceof Error ? err.message : String(err)}`,
           },
         }).catch(() => {});
       }
