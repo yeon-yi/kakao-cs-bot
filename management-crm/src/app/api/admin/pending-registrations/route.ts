@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { retryPendingRegistrations, PENDING_PATTERNS } from '@/lib/retry-pending-registrations';
 
 // GET /api/admin/pending-registrations
 // 모집플레이스 등록이 진행 중이거나 실패한 로그 목록 조회 (관리자 전용)
+//
+// POST /api/admin/pending-registrations
+// 수동 재시도 (관리자 전용)
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,9 +26,10 @@ export async function GET(request: NextRequest) {
         status: 'success',
         errorMessage: { not: null },
         OR: [
-          { errorMessage: { startsWith: '등록 진행 중' } },
-          { errorMessage: { startsWith: '등록 실패' } },
-          { errorMessage: { startsWith: '백그라운드 처리 실패' } },
+          { errorMessage: { startsWith: PENDING_PATTERNS.classifiable.pending } },
+          ...PENDING_PATTERNS.classifiable.failedPrefixes.map(p => ({
+            errorMessage: { startsWith: p },
+          })),
           { errorMessage: { contains: '수동 등록 필요' } },
         ],
       },
@@ -73,7 +78,30 @@ export async function GET(request: NextRequest) {
 }
 
 function classifyStatus(msg: string): 'pending' | 'failed' | 'manual' {
-  if (msg.startsWith('등록 진행 중')) return 'pending';
-  if (msg.startsWith('등록 실패') || msg.startsWith('백그라운드 처리 실패')) return 'failed';
+  if (msg.startsWith(PENDING_PATTERNS.classifiable.pending)) return 'pending';
+  if (PENDING_PATTERNS.classifiable.failedPrefixes.some(p => msg.startsWith(p))) return 'failed';
   return 'manual';
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const auth = requireAuth(request);
+
+    const user = await prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { role: true },
+    });
+    if (user?.role !== 'admin') {
+      return NextResponse.json({ message: '관리자만 실행 가능' }, { status: 403 });
+    }
+
+    const results = await retryPendingRegistrations();
+    return NextResponse.json({ ok: true, results });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ message: '인증이 필요합니다.' }, { status: 401 });
+    }
+    console.error('POST /api/admin/pending-registrations error:', error);
+    return NextResponse.json({ message: '재시도 실패' }, { status: 500 });
+  }
 }

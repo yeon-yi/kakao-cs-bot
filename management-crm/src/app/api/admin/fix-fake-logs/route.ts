@@ -49,6 +49,18 @@ export async function POST(request: NextRequest) {
       byPlace.set(log.placeId, arr);
     }
 
+    // N+1 방지: 관련 placeId들의 진짜 성공 로그를 한 번에 조회
+    const allPlaceIds = [...byPlace.keys()];
+    const realSuccessLogs = await prisma.homejeonsanLog.findMany({
+      where: {
+        placeId: { in: allPlaceIds },
+        status: 'success',
+        actorName: { not: 'system-advance' },
+      },
+      select: { placeId: true, action: true },
+    });
+    const realLogKeys = new Set(realSuccessLogs.map(l => `${l.placeId}|${l.action}`));
+
     const results: Array<{
       placeId: string;
       companyName: string | null;
@@ -88,19 +100,11 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // 같은 placeId에 대해 실제 actorName이 아닌 진짜 성공 로그가 있는지 확인
+      // 같은 placeId에 대해 실제 actorName이 아닌 진짜 성공 로그가 있는지 확인 (배치 조회 결과 사용)
       for (const log of logs) {
-        const realLog = await prisma.homejeonsanLog.findFirst({
-          where: {
-            placeId,
-            action: log.action,
-            status: 'success',
-            actorName: { not: 'system-advance' },
-          },
-          select: { id: true },
-        });
+        const hasRealLog = realLogKeys.has(`${placeId}|${log.action}`);
 
-        if (realLog) {
+        if (hasRealLog) {
           // 진짜 로그가 있으면 가짜 로그만 삭제
           if (!dryRun) {
             await prisma.homejeonsanLog.delete({ where: { id: log.id } });

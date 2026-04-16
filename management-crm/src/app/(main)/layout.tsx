@@ -11,6 +11,8 @@ interface User {
   role: string;
   branch: string;
   tutorialSeen?: boolean;
+  riskTeam?: boolean;
+  riskPosition?: string | null;
 }
 
 import { ROLE_LABELS, UPSELLING_ROLES, RENEWAL_ROLES } from '@/lib/constants';
@@ -86,6 +88,16 @@ const RENEWAL_NAV_ITEMS: NavItem[] = [
   { label: "전지사 업체", href: "/companies", icon: icons.company, show: () => true },
 ];
 
+// 리스크팀 메뉴
+const RISK_NAV_ITEMS: NavItem[] = [
+  { label: "대시보드", href: "/risk/dashboard", icon: icons.dashboard, show: () => true },
+  { label: "해지인입건", href: "/risk/cancel-defense", icon: icons.company, show: () => true },
+  { label: "카드민원", href: "/risk/card-complaint", icon: icons.company, show: () => true },
+  { label: "기관민원", href: "/risk/institution-complaint", icon: icons.company, show: () => true },
+  { label: "VOC 피드", href: "/risk/voc", icon: icons.logs, show: () => true },
+  { label: "메일함", href: "/risk/gmail", icon: icons.logs, show: () => true },
+];
+
 // 관리팀 메뉴 (admin, manager_team만)
 const MGMT_NAV_ITEMS: NavItem[] = [
   { label: "업체 현황", href: "/mgmt-companies", icon: icons.company, show: (r) => r === "admin" || r === "manager_team" },
@@ -94,23 +106,15 @@ const MGMT_NAV_ITEMS: NavItem[] = [
   { label: "솔루션 실적", href: "/solution-report", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
   { label: "홈전산", href: "/homejeonsan", icon: icons.company, show: (r) => r === "admin" || r === "manager_team" },
   { label: "크롤링 설정", href: "/crawler", icon: icons.crawler, show: (r) => r === "admin" || r === "manager_team" },
+  { label: "등록 추적", href: "/admin/pending-registrations", icon: icons.logs, show: (r) => r === "admin" },
 ];
 
-// 분석 메뉴 (admin, manager_team만)
-const ANALYTICS_NAV_ITEMS: NavItem[] = [
-  { label: "워크로드", href: "/analytics/workload", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-  { label: "품질(AS율)", href: "/analytics/quality", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-  { label: "만료 파이프라인", href: "/analytics/expiring", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-  { label: "이탈 분석", href: "/analytics/churn", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-  { label: "KPI", href: "/analytics/kpi", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-  { label: "알림 이력", href: "/analytics/notifications", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" },
-];
 
 // 공통 메뉴 (하단 배치)
 const COMMON_NAV_ITEMS: NavItem[] = [
   { label: "성과 리포트", href: "/reports", icon: icons.logs, show: (r) => r === "admin" || r === "manager_team" || r === "branch_manager" || r === "manager" || r === "upselling_director" || r === "upselling_chief" },
   { label: "활동 내역", href: "/logs", icon: icons.logs, show: () => true },
-  { label: "계정 관리", href: "/users", icon: icons.users, show: (r) => r === "admin" || r === "manager_team" || r === "branch_manager" || r === "upselling_director" || r === "upselling_chief" || r === "renewal_director" || r === "renewal_chief" },
+  { label: "계정 관리", href: "/users", icon: icons.users, show: (r) => r === "admin" || r === "manager_team" || r === "branch_manager" || r === "manager" || r === "upselling_director" || r === "upselling_chief" || r === "renewal_director" || r === "renewal_chief" },
   { label: "설정", href: "/settings", icon: icons.settings, show: () => true },
 ];
 
@@ -263,11 +267,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     ? RENEWAL_NAV_ITEMS.filter((item) => item.show(user.role))
     : [];
 
+  // 리스크팀 메뉴 (riskTeam 플래그 있는 경우만 — admin이라도 플래그 없으면 숨김)
+  const isRiskUser = user.riskTeam === true;
+  const riskItems = isRiskUser ? RISK_NAV_ITEMS.filter((item) => item.show(user.role)) : [];
+
   // 관리팀 메뉴
   const mgmtItems = MGMT_NAV_ITEMS.filter((item) => item.show(user.role));
-
-  // 분석 메뉴
-  const analyticsItems = ANALYTICS_NAV_ITEMS.filter((item) => item.show(user.role));
 
   // 공통 메뉴
   const commonItems = COMMON_NAV_ITEMS.filter((item) => item.show(user.role));
@@ -416,6 +421,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             </>
           )}
 
+          {/* 리스크팀 섹션 */}
+          {riskItems.length > 0 && (
+            <>
+              <div style={{ margin: "12px 20px 8px", borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+              <div style={{ padding: "4px 20px 8px", fontSize: "10.5px", fontWeight: 600, color: "#ef4444", letterSpacing: "0.05em" }}>
+                리스크팀
+              </div>
+              {riskItems.map((item) => <NavLink key={item.href} item={item} pathname={pathname} accent="#ef4444" />)}
+            </>
+          )}
+
           {/* 관리팀 섹션 */}
           {mgmtItems.length > 0 && (
             <>
@@ -424,17 +440,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 관리팀
               </div>
               {mgmtItems.map((item) => <NavLink key={item.href} item={item} pathname={pathname} accent="#f59e0b" />)}
-            </>
-          )}
-
-          {/* 분석 섹션 */}
-          {analyticsItems.length > 0 && (
-            <>
-              <div style={{ margin: "4px 20px 8px", borderTop: "1px solid rgba(255,255,255,0.05)" }} />
-              <div style={{ padding: "4px 20px 8px", fontSize: "10px", fontWeight: 600, color: "#22d3ee", letterSpacing: "0.05em" }}>
-                분석
-              </div>
-              {analyticsItems.map((item) => <NavLink key={item.href} item={item} pathname={pathname} accent="#22d3ee" />)}
             </>
           )}
 
