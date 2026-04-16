@@ -49,6 +49,7 @@ import {
   getReportFormData,
   updateReportFields,
   uploadImage,
+  isPostAlreadyRegistered,
 } from '@/lib/homejeonsan';
 import { updateIsCompleted, updateStep } from '@/lib/solution-utils';
 
@@ -126,21 +127,8 @@ export async function GET(request: NextRequest) {
         reportContract = rpResult.contractPeriod || null;
       }
 
-      // 외부 시스템에서 리포트를 못 찾으면 로컬 DB 로그로 fallback 확인
-      if (!reportExists && isPlaceId) {
-        const localLog = await prisma.homejeonsanLog.findFirst({
-          where: {
-            placeId: placeNumber,
-            action: 'register_report',
-            OR: [
-              { status: 'success' },
-              { errorMessage: { contains: '진행중인 리포트가 존재' } },
-            ],
-          },
-          select: { id: true },
-        });
-        if (localLog) reportExists = true;
-      }
+      // 외부(모집플레이스)가 진실의 원천 — 로컬 로그 fallback 제거
+      // (리포트를 수동 삭제한 경우 과거 로그가 남아있어도 exists=true로 오판하던 버그 방지)
 
       return NextResponse.json({
         keywordCount: kwResult.total,
@@ -155,23 +143,7 @@ export async function GET(request: NextRequest) {
       if (!placeNumber) return NextResponse.json({ error: '플레이스번호를 입력해주세요.' }, { status: 400 });
 
       const stats = await fetchReportStats(placeNumber);
-      // 외부에서 못 찾아도 로컬 DB에 등록 이력이 있으면 exists=true 처리
-      if (!stats.exists) {
-        const localLog = await prisma.homejeonsanLog.findFirst({
-          where: {
-            placeId: placeNumber,
-            action: 'register_report',
-            OR: [
-              { status: 'success' },
-              { errorMessage: { contains: '진행중인 리포트가 존재' } },
-            ],
-          },
-          select: { id: true },
-        });
-        if (localLog) {
-          stats.exists = true;
-        }
-      }
+      // 외부(모집플레이스)가 진실의 원천 — 로컬 로그 fallback 제거
       return NextResponse.json(stats);
     }
 
@@ -265,7 +237,7 @@ export async function GET(request: NextRequest) {
         if (actionMap[typeFilter]) where.action = { in: actionMap[typeFilter] };
       }
 
-      const [logs, total, successCount, failCount] = await Promise.all([
+      const [logs, total, successCount, failCount, warningCount] = await Promise.all([
         prisma.homejeonsanLog.findMany({
           where,
           orderBy: { createdAt: 'desc' },
@@ -273,14 +245,16 @@ export async function GET(request: NextRequest) {
           take: pageSize,
         }),
         prisma.homejeonsanLog.count({ where }),
-        prisma.homejeonsanLog.count({ where: { ...where, status: 'success' } }),
+        prisma.homejeonsanLog.count({ where: { ...where, status: 'success', errorMessage: null } }),
         prisma.homejeonsanLog.count({ where: { ...where, status: { not: 'success' } } }),
+        prisma.homejeonsanLog.count({ where: { ...where, status: 'success', errorMessage: { not: null } } }),
       ]);
 
       return NextResponse.json({
         total,
         successCount,
         failCount,
+        warningCount,
         page,
         pageSize,
         logs: logs.map((l) => ({
@@ -619,6 +593,24 @@ export async function POST(request: NextRequest) {
           }
 
           await new Promise(r => setTimeout(r, 300));
+
+          // 중복 등록 방지: 이미 같은 링크가 등록돼 있으면 skip (success로 처리하되 증분 카운트 X)
+          const alreadyExists = await isPostAlreadyRegistered(placeId, link);
+          if (alreadyExists) {
+            results.push({ placeId, companyName, link, success: true, message: '이미 등록됨 (중복 스킵)' });
+            await prisma.homejeonsanLog.create({
+              data: {
+                action: 'register_insta', placeId, businessName: companyName || null, keyword: link,
+                category: null, staffName: null,
+                status: 'success',
+                errorMessage: '이미 등록됨 (중복 스킵)',
+                actorId: auth.userId, actorName: auth.displayName, actorBranch: auth.branch || null,
+              },
+            });
+            successCount++;
+            continue;
+          }
+
           let result = await registerPost({ placeNumber: placeId, type: '2', title: companyName || link, link });
           if (!result.success && (result.message?.includes('Internal Server Error') || result.message?.includes('오류발생'))) {
             await new Promise(r => setTimeout(r, 1000));
@@ -679,6 +671,24 @@ export async function POST(request: NextRequest) {
           }
 
           await new Promise(r => setTimeout(r, 300));
+
+          // 중복 등록 방지
+          const alreadyExists = await isPostAlreadyRegistered(placeId, link);
+          if (alreadyExists) {
+            results.push({ placeId, companyName, link, success: true, message: '이미 등록됨 (중복 스킵)' });
+            await prisma.homejeonsanLog.create({
+              data: {
+                action: 'register_blog', placeId, businessName: companyName || null, keyword: link,
+                category: null, staffName: null,
+                status: 'success',
+                errorMessage: '이미 등록됨 (중복 스킵)',
+                actorId: auth.userId, actorName: auth.displayName, actorBranch: auth.branch || null,
+              },
+            });
+            successCount++;
+            continue;
+          }
+
           let result = await registerPost({ placeNumber: placeId, type: '1', title: companyName || link, link });
           if (!result.success && (result.message?.includes('Internal Server Error') || result.message?.includes('오류발생'))) {
             await new Promise(r => setTimeout(r, 1000));
