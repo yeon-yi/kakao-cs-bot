@@ -6,8 +6,7 @@ import { registerKeyword, registerReport, searchKeywords } from '@/lib/homejeons
 
 // POST /api/companies/[id]/advance-step — 사용자가 "다음 단계" 버튼 클릭 시 호출
 // body: { to: 3 | 4 }  (3 = S2→S3, 4 = S3→진행)
-// to=3: 모집플레이스에 키워드 실제 등록 후 로그 기록
-// to=4: 모집플레이스에 리포트 실제 등록 후 로그 기록
+// 즉시 pending 로그 생성 후 응답 → 모집플레이스 등록은 백그라운드에서 처리
 
 export async function POST(
   request: NextRequest,
@@ -48,19 +47,20 @@ export async function POST(
       return NextResponse.json({ message: '솔루션 설정이 없습니다' }, { status: 400 });
     }
 
+    const placeId = company.placeId;
     const cutoff = company.setting.createdAt;
     const targetAction = to === 3 ? 'register' : 'register_report';
 
     // 이 업체 기준(cutoff 이후) 이미 성공 로그가 있는지 확인
     const existing = await prisma.homejeonsanLog.findFirst({
       where: {
-        placeId: company.placeId,
+        placeId,
         action: targetAction,
         createdAt: { gte: cutoff },
         ...(targetAction === 'register'
           ? { status: 'success' }
           : { OR: [{ status: 'success' }, { errorMessage: { contains: '진행중인 리포트가 존재' } }] }),
-        actorName: { not: 'system-advance' }, // 가짜 로그 제외
+        actorName: { not: 'system-advance' },
       },
       select: { id: true },
     });
@@ -75,165 +75,127 @@ export async function POST(
       });
     }
 
-    // -- to=3: 키워드 등록 --
-    if (to === 3) {
-      let kwRegistered = false;
-
-      // 모집플레이스에 이미 등록된 키워드 확인
-      let existingKeywords = new Set<string>();
-      try {
-        const cached = await searchKeywords(company.placeId);
-        existingKeywords = new Set(cached.keywords.map((k: { keyword: string }) => k.keyword));
-      } catch { /* 조회 실패 시 중복 체크 없이 진행 */ }
-
-      if (existingKeywords.size > 0) {
-        // 이미 모집플레이스에 키워드가 있으면 성공 로그 기록
-        await prisma.homejeonsanLog.create({
-          data: {
-            action: 'register',
-            placeId: company.placeId,
-            businessName: company.companyName,
-            keyword: [...existingKeywords].join(','),
-            category: '기타',
-            staffName: company.staffName,
-            status: 'success',
-            errorMessage: null,
-            actorId: auth.userId,
-            actorName: auth.displayName,
-            actorBranch: company.branch || null,
-          },
-        });
-        kwRegistered = true;
-      } else {
-        // 키워드 로그에서 키워드 정보 가져와 등록 시도
-        const kwLog = await prisma.homejeonsanLog.findFirst({
-          where: { placeId: company.placeId, action: 'register', keyword: { not: null } },
-          orderBy: { createdAt: 'desc' },
-          select: { keyword: true, category: true },
-        });
-
-        if (kwLog?.keyword) {
-          const keywords = kwLog.keyword.split(',').map(k => k.trim()).filter(Boolean);
-          for (const kw of keywords) {
-            const result = await registerKeyword({
-              businessName: company.companyName,
-              placeId: company.placeId,
-              keyword: kw,
-              category: kwLog.category || '기타',
-              staffName: company.staffName,
-              adType: '정상',
-            });
-            await prisma.homejeonsanLog.create({
-              data: {
-                action: 'register',
-                placeId: company.placeId,
-                businessName: company.companyName,
-                keyword: kw,
-                category: kwLog.category || '기타',
-                staffName: company.staffName,
-                status: result.success ? 'success' : 'failed',
-                errorMessage: result.success ? null : result.message,
-                actorId: auth.userId,
-                actorName: auth.displayName,
-                actorBranch: company.branch || null,
-              },
-            });
-            if (result.success) kwRegistered = true;
-          }
-        }
-      }
-
-      // 키워드 등록 못 했어도 단계 전환은 허용 (로그에 기록)
-      if (!kwRegistered) {
-        await prisma.homejeonsanLog.create({
-          data: {
-            action: 'register',
-            placeId: company.placeId,
-            businessName: company.companyName,
-            keyword: null,
-            category: null,
-            staffName: company.staffName,
-            status: 'success',
-            errorMessage: '키워드 정보 없이 단계 전환됨 (수동 등록 필요)',
-            actorId: auth.userId,
-            actorName: auth.displayName,
-            actorBranch: company.branch || null,
-          },
-        });
-      }
-    }
-
-    // -- to=4: 리포트 등록 --
-    if (to === 4) {
-      let rpRegistered = false;
-      const contractStart = company.setting.contractStart;
-
-      if (company.phone && contractStart) {
-        let months = 6;
-        if (company.setting.contractEnd) {
-          const diffMs = company.setting.contractEnd.getTime() - contractStart.getTime();
-          months = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30)) || 6;
-        }
-
-        const result = await registerReport({
-          placeId: company.placeId,
-          phone1: company.phone,
-          contractStart: contractStart.toISOString().split('T')[0],
-          months,
-        });
-
-        await prisma.homejeonsanLog.create({
-          data: {
-            action: 'register_report',
-            placeId: company.placeId,
-            businessName: company.companyName,
-            keyword: null,
-            category: null,
-            staffName: company.staffName,
-            status: result.success ? 'success' : 'failed',
-            errorMessage: result.success ? null : result.message,
-            actorId: auth.userId,
-            actorName: auth.displayName,
-            actorBranch: company.branch || null,
-          },
-        });
-        rpRegistered = result.success;
-      }
-
-      // 데이터 부족 시에도 단계 전환 허용 (로그에 기록)
-      if (!rpRegistered) {
-        const missing = [
-          !company.phone ? '연락처' : '',
-          !contractStart ? '계약시작일' : '',
-        ].filter(Boolean).join(', ');
-
-        await prisma.homejeonsanLog.create({
-          data: {
-            action: 'register_report',
-            placeId: company.placeId,
-            businessName: company.companyName,
-            keyword: null,
-            category: null,
-            staffName: company.staffName,
-            status: 'success',
-            errorMessage: missing
-              ? `${missing} 없이 단계 전환됨 (수동 등록 필요)`
-              : '리포트 등록 실패, 단계 전환됨 (수동 등록 필요)',
-            actorId: auth.userId,
-            actorName: auth.displayName,
-            actorBranch: company.branch || null,
-          },
-        });
-      }
-    }
+    // pending 로그 즉시 생성 (step 전환을 위해 status='success'로 기록, errorMessage에 진행중 표시)
+    const pendingLog = await prisma.homejeonsanLog.create({
+      data: {
+        action: targetAction,
+        placeId,
+        businessName: company.companyName,
+        keyword: null,
+        category: null,
+        staffName: company.staffName,
+        status: 'success',
+        errorMessage: '등록 진행 중...',
+        actorId: auth.userId,
+        actorName: auth.displayName,
+        actorBranch: company.branch || null,
+      },
+    });
 
     const newStep = await updateStep(companyId);
+
+    // 백그라운드에서 실제 모집플레이스 등록 (응답은 즉시 반환)
+    const bgCompany = company;
+    void (async () => {
+      try {
+        if (to === 3) {
+          let registered = false;
+          let finalKeyword: string | null = null;
+
+          try {
+            const cached = await searchKeywords(placeId);
+            const existingKws = cached.keywords.map((k: { keyword: string }) => k.keyword);
+            if (existingKws.length > 0) {
+              registered = true;
+              finalKeyword = existingKws.join(',');
+            }
+          } catch { /* 조회 실패 시 다음 단계로 */ }
+
+          if (!registered) {
+            const kwLog = await prisma.homejeonsanLog.findFirst({
+              where: { placeId, action: 'register', keyword: { not: null } },
+              orderBy: { createdAt: 'desc' },
+              select: { keyword: true, category: true },
+            });
+            if (kwLog?.keyword) {
+              const keywords = kwLog.keyword.split(',').map(k => k.trim()).filter(Boolean);
+              for (const kw of keywords) {
+                const result = await registerKeyword({
+                  businessName: bgCompany.companyName,
+                  placeId,
+                  keyword: kw,
+                  category: kwLog.category || '기타',
+                  staffName: bgCompany.staffName,
+                  adType: '정상',
+                });
+                if (result.success) {
+                  registered = true;
+                  finalKeyword = finalKeyword ? `${finalKeyword},${kw}` : kw;
+                }
+              }
+            }
+          }
+
+          await prisma.homejeonsanLog.update({
+            where: { id: pendingLog.id },
+            data: {
+              keyword: finalKeyword,
+              errorMessage: registered ? null : '키워드 정보 없음 (수동 등록 필요)',
+            },
+          });
+        } else {
+          const contractStart = bgCompany.setting?.contractStart;
+          if (bgCompany.phone && contractStart) {
+            let months = 6;
+            if (bgCompany.setting?.contractEnd) {
+              const diffMs = bgCompany.setting.contractEnd.getTime() - contractStart.getTime();
+              months = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30)) || 6;
+            }
+            const result = await registerReport({
+              placeId,
+              phone1: bgCompany.phone,
+              contractStart: contractStart.toISOString().split('T')[0],
+              months,
+            });
+            await prisma.homejeonsanLog.update({
+              where: { id: pendingLog.id },
+              data: {
+                status: result.success ? 'success' : 'failed',
+                errorMessage: result.success ? null : result.message,
+              },
+            });
+          } else {
+            const missing = [
+              !bgCompany.phone ? '연락처' : '',
+              !contractStart ? '계약시작일' : '',
+            ].filter(Boolean).join(', ');
+            await prisma.homejeonsanLog.update({
+              where: { id: pendingLog.id },
+              data: {
+                errorMessage: `${missing} 없음 (수동 등록 필요)`,
+              },
+            });
+          }
+        }
+
+        await updateStep(companyId).catch(() => {});
+      } catch (err) {
+        console.error('[advance-step background] failed:', err);
+        await prisma.homejeonsanLog.update({
+          where: { id: pendingLog.id },
+          data: {
+            status: 'failed',
+            errorMessage: `백그라운드 처리 실패: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        }).catch(() => {});
+      }
+    })();
 
     return NextResponse.json({
       ok: true,
       created: true,
       step: newStep,
-      message: to === 3 ? '키워드 등록 완료' : '리포트 등록 완료',
+      message: '단계 전환됨 (모집플레이스 등록은 백그라운드 처리)',
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
