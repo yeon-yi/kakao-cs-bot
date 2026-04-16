@@ -77,12 +77,7 @@ export async function POST(
 
     // -- to=3: 키워드 등록 --
     if (to === 3) {
-      // 최근 키워드 로그에서 키워드/카테고리 가져오기
-      const kwLog = await prisma.homejeonsanLog.findFirst({
-        where: { placeId: company.placeId, action: 'register', keyword: { not: null } },
-        orderBy: { createdAt: 'desc' },
-        select: { keyword: true, category: true },
-      });
+      let kwRegistered = false;
 
       // 모집플레이스에 이미 등록된 키워드 확인
       let existingKeywords = new Set<string>();
@@ -99,7 +94,7 @@ export async function POST(
             placeId: company.placeId,
             businessName: company.companyName,
             keyword: [...existingKeywords].join(','),
-            category: kwLog?.category || '기타',
+            category: '기타',
             staffName: company.staffName,
             status: 'success',
             errorMessage: null,
@@ -108,91 +103,127 @@ export async function POST(
             actorBranch: company.branch || null,
           },
         });
-      } else if (kwLog?.keyword) {
-        // 키워드 정보가 있으면 실제 등록
-        const keywords = kwLog.keyword.split(',').map(k => k.trim()).filter(Boolean);
-        let successCount = 0;
+        kwRegistered = true;
+      } else {
+        // 키워드 로그에서 키워드 정보 가져와 등록 시도
+        const kwLog = await prisma.homejeonsanLog.findFirst({
+          where: { placeId: company.placeId, action: 'register', keyword: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          select: { keyword: true, category: true },
+        });
 
-        for (const kw of keywords) {
-          const result = await registerKeyword({
-            businessName: company.companyName,
-            placeId: company.placeId,
-            keyword: kw,
-            category: kwLog.category || '기타',
-            staffName: company.staffName,
-            adType: '정상',
-          });
-
-          await prisma.homejeonsanLog.create({
-            data: {
-              action: 'register',
-              placeId: company.placeId,
+        if (kwLog?.keyword) {
+          const keywords = kwLog.keyword.split(',').map(k => k.trim()).filter(Boolean);
+          for (const kw of keywords) {
+            const result = await registerKeyword({
               businessName: company.companyName,
+              placeId: company.placeId,
               keyword: kw,
               category: kwLog.category || '기타',
               staffName: company.staffName,
-              status: result.success ? 'success' : 'failed',
-              errorMessage: result.success ? null : result.message,
-              actorId: auth.userId,
-              actorName: auth.displayName,
-              actorBranch: company.branch || null,
-            },
-          });
-
-          if (result.success) successCount++;
+              adType: '정상',
+            });
+            await prisma.homejeonsanLog.create({
+              data: {
+                action: 'register',
+                placeId: company.placeId,
+                businessName: company.companyName,
+                keyword: kw,
+                category: kwLog.category || '기타',
+                staffName: company.staffName,
+                status: result.success ? 'success' : 'failed',
+                errorMessage: result.success ? null : result.message,
+                actorId: auth.userId,
+                actorName: auth.displayName,
+                actorBranch: company.branch || null,
+              },
+            });
+            if (result.success) kwRegistered = true;
+          }
         }
+      }
 
-        if (successCount === 0) {
-          return NextResponse.json({ ok: false, message: '키워드 등록 실패' }, { status: 400 });
-        }
-      } else {
-        return NextResponse.json({ ok: false, message: '등록할 키워드 정보가 없습니다' }, { status: 400 });
+      // 키워드 등록 못 했어도 단계 전환은 허용 (로그에 기록)
+      if (!kwRegistered) {
+        await prisma.homejeonsanLog.create({
+          data: {
+            action: 'register',
+            placeId: company.placeId,
+            businessName: company.companyName,
+            keyword: null,
+            category: null,
+            staffName: company.staffName,
+            status: 'success',
+            errorMessage: '키워드 정보 없이 단계 전환됨 (수동 등록 필요)',
+            actorId: auth.userId,
+            actorName: auth.displayName,
+            actorBranch: company.branch || null,
+          },
+        });
       }
     }
 
     // -- to=4: 리포트 등록 --
     if (to === 4) {
-      if (!company.phone) {
-        return NextResponse.json({ ok: false, message: '업체 연락처가 없습니다' }, { status: 400 });
-      }
-
+      let rpRegistered = false;
       const contractStart = company.setting.contractStart;
-      if (!contractStart) {
-        return NextResponse.json({ ok: false, message: '계약 시작일이 없습니다' }, { status: 400 });
-      }
 
-      // 계약 개월수 계산 (contractEnd - contractStart)
-      let months = 6;
-      if (company.setting.contractEnd) {
-        const diffMs = company.setting.contractEnd.getTime() - contractStart.getTime();
-        months = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30)) || 6;
-      }
+      if (company.phone && contractStart) {
+        let months = 6;
+        if (company.setting.contractEnd) {
+          const diffMs = company.setting.contractEnd.getTime() - contractStart.getTime();
+          months = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30)) || 6;
+        }
 
-      const result = await registerReport({
-        placeId: company.placeId,
-        phone1: company.phone,
-        contractStart: contractStart.toISOString().split('T')[0],
-        months,
-      });
-
-      await prisma.homejeonsanLog.create({
-        data: {
-          action: 'register_report',
+        const result = await registerReport({
           placeId: company.placeId,
-          businessName: company.companyName,
-          keyword: null,
-          category: null,
-          staffName: company.staffName,
-          status: result.success ? 'success' : 'failed',
-          errorMessage: result.success ? null : result.message,
-          actorId: auth.userId,
-          actorName: auth.displayName,
-          actorBranch: company.branch || null,
-        },
-      });
+          phone1: company.phone,
+          contractStart: contractStart.toISOString().split('T')[0],
+          months,
+        });
 
-      if (!result.success) {
-        return NextResponse.json({ ok: false, message: `리포트 등록 실패: ${result.message}` }, { status: 400 });
+        await prisma.homejeonsanLog.create({
+          data: {
+            action: 'register_report',
+            placeId: company.placeId,
+            businessName: company.companyName,
+            keyword: null,
+            category: null,
+            staffName: company.staffName,
+            status: result.success ? 'success' : 'failed',
+            errorMessage: result.success ? null : result.message,
+            actorId: auth.userId,
+            actorName: auth.displayName,
+            actorBranch: company.branch || null,
+          },
+        });
+        rpRegistered = result.success;
+      }
+
+      // 데이터 부족 시에도 단계 전환 허용 (로그에 기록)
+      if (!rpRegistered) {
+        const missing = [
+          !company.phone ? '연락처' : '',
+          !contractStart ? '계약시작일' : '',
+        ].filter(Boolean).join(', ');
+
+        await prisma.homejeonsanLog.create({
+          data: {
+            action: 'register_report',
+            placeId: company.placeId,
+            businessName: company.companyName,
+            keyword: null,
+            category: null,
+            staffName: company.staffName,
+            status: 'success',
+            errorMessage: missing
+              ? `${missing} 없이 단계 전환됨 (수동 등록 필요)`
+              : '리포트 등록 실패, 단계 전환됨 (수동 등록 필요)',
+            actorId: auth.userId,
+            actorName: auth.displayName,
+            actorBranch: company.branch || null,
+          },
+        });
       }
     }
 
