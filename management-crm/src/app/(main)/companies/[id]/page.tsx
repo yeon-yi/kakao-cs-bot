@@ -585,6 +585,26 @@ export default function CompanyDetailPage({
   }, [company]);
   useEffect(() => { fetchMyRequests(); }, [fetchMyRequests]);
 
+  async function advanceStep(to: 3 | 4) {
+    try {
+      const res = await fetch(`/api/companies/${id}/advance-step`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(`단계 전환 실패: ${data.message || res.status}`, 'err');
+        return; // 실패 시 UI step 변경하지 않음
+      }
+    } catch (e) {
+      console.warn('[advanceStep] failed:', e);
+      showToast('단계 전환 실패 (네트워크)', 'err');
+      return;
+    }
+    setActiveStep(to);
+  }
+
   async function handleSolutionRequest(solutionType: string, isAS: boolean, reason?: string) {
     setRequestSubmitting(true);
     try {
@@ -617,26 +637,24 @@ export default function CompanyDetailPage({
           };
           setReportStats(stats);
 
-          // 모집플레이스 건수가 있으면 항상 sync-progress API로 동기화
-          if (stats.blogCount > 0 || stats.instaCount > 0) {
-            fetch(`/api/companies/${id}/sync-progress`, {
-              method: 'POST', credentials: 'include',
-            }).then(r => r.ok ? r.json() : null).then(syncData => {
-              if (syncData?.synced) {
-                const sBlog = syncData.blogCount || 0;
-                const sInsta = syncData.instaCount || 0;
-                // setProgress(prev => ...) 패턴으로 stale closure 방지
-                setProgress(prev => prev
-                  ? { ...prev, blogCount: Math.max(prev.blogCount, sBlog), instaCount: Math.max(prev.instaCount, sInsta) }
-                  : { id: 0, companyId: parseInt(id), rewardDone: false, blogCount: sBlog, instaCount: sInsta, homepageDone: false, seoDone: false, videoDone: false });
-                setProgressForm(prev => ({
-                  ...prev,
-                  blogCount: Math.max(prev.blogCount, sBlog),
-                  instaCount: Math.max(prev.instaCount, sInsta),
-                }));
-              }
-            }).catch(() => {});
-          }
+          // 리포트 존재 시 항상 sync-progress 호출 (블로그/인스타/홈페이지/SEO/영상 전부 동기화)
+          fetch(`/api/companies/${id}/sync-progress`, {
+            method: 'POST', credentials: 'include',
+          }).then(r => r.ok ? r.json() : null).then(syncData => {
+            if (syncData?.ok) {
+              const sBlog = syncData.blogCount || 0;
+              const sInsta = syncData.instaCount || 0;
+              // 리포트 기준 + 수동 입력 중 큰 값 사용
+              setProgress(prev => prev
+                ? { ...prev, blogCount: Math.max(prev.blogCount, sBlog), instaCount: Math.max(prev.instaCount, sInsta) }
+                : { id: 0, companyId: parseInt(id), rewardDone: false, blogCount: sBlog, instaCount: sInsta, homepageDone: false, seoDone: false, videoDone: false });
+              setProgressForm(prev => ({
+                ...prev,
+                blogCount: Math.max(prev.blogCount, sBlog),
+                instaCount: Math.max(prev.instaCount, sInsta),
+              }));
+            }
+          }).catch(() => {});
         }
       })
       .catch(() => {})
@@ -760,13 +778,30 @@ export default function CompanyDetailPage({
     try {
       // 설정 저장
       await apiPost(`/api/companies/${id}/settings`, settingForm);
-      // placeId도 함께 저장
-      await fetch(`/api/companies/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ placeId: pid }),
-      });
+      // placeId도 함께 저장 (중복 체크)
+      const savePlaceId = async (force: boolean) => {
+        return fetch(`/api/companies/${id}${force ? '?force=1' : ''}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ placeId: pid }),
+        });
+      };
+      let res = await savePlaceId(false);
+      if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        const ok = window.confirm(`${data.message || '고유번호 중복'}\n\n그래도 저장하시겠습니까? (이전 업체의 진행상황이 섞일 수 있습니다)`);
+        if (!ok) {
+          setSettingMsg({ type: 'err', text: '저장 취소됨 (고유번호 중복)' });
+          setSettingSaving(false);
+          return;
+        }
+        res = await savePlaceId(true);
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || `저장 실패 (${res.status})`);
+      }
       setSettingMsg({ type: 'ok', text: '설정이 저장되었습니다.' });
       await fetchData();
     } catch (e: unknown) {
@@ -1955,7 +1990,7 @@ export default function CompanyDetailPage({
                       {hjSaving ? '등록 중...' : '홈전산 등록'}
                     </button>
                     <button
-                      onClick={() => setActiveStep(3)}
+                      onClick={() => advanceStep(3)}
                       style={{
                         ...primaryBtnStyle(false),
                         backgroundColor: '#16a34a',
@@ -2003,7 +2038,7 @@ export default function CompanyDetailPage({
                   <p style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600, margin: '0 0 6px 0' }}>리포트가 이미 등록되어 있습니다.</p>
                   <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0' }}>Step 4에서 진행 현황을 관리할 수 있습니다.</p>
                   <button
-                    onClick={() => setActiveStep(4)}
+                    onClick={() => advanceStep(4)}
                     style={{
                       ...primaryBtnStyle(false),
                       backgroundColor: '#16a34a',
@@ -2136,7 +2171,7 @@ export default function CompanyDetailPage({
                       {rpSaving ? '등록 중...' : '리포트 등록'}
                     </button>
                     <button
-                      onClick={() => setActiveStep(4)}
+                      onClick={() => advanceStep(4)}
                       style={{
                         ...primaryBtnStyle(false),
                         backgroundColor: '#16a34a',
@@ -3042,13 +3077,6 @@ function SolutionHistory({ companyId }: { companyId: number }) {
             actor: r.assignedTo?.displayName || '',
           });
         }
-
-        // 3. 리포트 자동 (progress.updatedAt 기반 — 별도 로그는 없지만 표시)
-        // 리포트 데이터가 있으면 표시
-        try {
-          const reportRes = await fetch(`/api/homejeonsan?action=report_stats&placeNumber=${companyId}`, { credentials: 'include' });
-          // report_stats는 placeId 필요 — companyId 아님. 여기서는 스킵.
-        } catch { /* 의도적 스킵 */ }
 
         entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setLogs(entries);
