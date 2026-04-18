@@ -56,7 +56,8 @@ function extractBusinessName(subject: string, bodySnippet: string): string | nul
 }
 
 export function classifyIngest(ingest: IngestRow): ClassifyResult {
-  const { subject, fromAddress, bodySnippet } = ingest;
+  const { subject, fromAddress, bodySnippet, bodyText } = ingest;
+  const fullBody = bodyText || bodySnippet;
 
   // 무시할 메일
   if (IGNORE_SENDERS.some(s => fromAddress.toLowerCase() === s)) {
@@ -70,7 +71,7 @@ export function classifyIngest(ingest: IngestRow): ClassifyResult {
   if (KG_SENDER_PATTERN.test(fromAddress) || KG_SUBJECT_PATTERN.test(subject)) {
     return {
       caseType: 'card_complaint',
-      businessName: extractBusinessName(subject, bodySnippet),
+      businessName: extractBusinessName(subject, fullBody),
       skip: false,
     };
   }
@@ -79,16 +80,16 @@ export function classifyIngest(ingest: IngestRow): ClassifyResult {
   if (INSTITUTION_SENDERS.includes(fromAddress.toLowerCase()) || INSTITUTION_SUBJECT_PATTERN.test(subject)) {
     return {
       caseType: 'institution_complaint',
-      businessName: extractBusinessName(subject, bodySnippet),
+      businessName: extractBusinessName(subject, fullBody),
       skip: false,
     };
   }
 
-  // 해지방어 (취소 요청)
-  if (CANCEL_SUBJECT_PATTERN.test(subject)) {
+  // 해지방어 (취소 요청) — 제목 + 본문 모두 검사
+  if (CANCEL_SUBJECT_PATTERN.test(subject) || CANCEL_SUBJECT_PATTERN.test(fullBody)) {
     return {
       caseType: 'cancel_defense',
-      businessName: extractBusinessName(subject, bodySnippet),
+      businessName: extractBusinessName(subject, fullBody),
       skip: false,
     };
   }

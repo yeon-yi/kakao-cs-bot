@@ -68,10 +68,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'caseId 또는 companyId가 필요합니다.' }, { status: 400 });
     }
 
-    // companyId FK 검증 (존재하지 않는 company면 null 처리)
     if (companyId) {
       const exists = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } });
-      if (!exists) companyId = null;
+      if (!exists) {
+        return NextResponse.json({ message: `companyId ${companyId}에 해당하는 업체가 없습니다.` }, { status: 400 });
+      }
     }
 
     const voc = await prisma.$transaction(async (tx) => {

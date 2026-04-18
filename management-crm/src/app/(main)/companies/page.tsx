@@ -1,49 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSSERefresh } from '@/lib/useSSE';
-
-/* ─────────────────────────── Types ─────────────────────────── */
-
-interface CompanySetting {
-  contractStart: string | null;
-  contractEnd: string | null;
-  isHolding: boolean;
-  hasReward: boolean;
-  blogTarget: number;
-  instaTarget: number;
-  hasHomepage: boolean;
-  videoType: string | null; // "premium" | "short" | null
-}
-
-interface CompanyProgress {
-  rewardDone: boolean;
-  blogCount: number;
-  instaCount: number;
-  homepageDone: boolean;
-  videoDone: boolean;
-}
-
-interface Company {
-  id: number;
-  sourceId: number;
-  registrant: string;
-  paymentDate: string;
-  companyName: string;
-  representative: string;
-  phone: string;
-  staffName: string;
-  managerName: string;
-  branch: string;
-  cardCompany: string | null;
-  paymentAmount: number | null;
-  status: string;
-  setting: CompanySetting | null;
-  progress: CompanyProgress | null;
-  _count?: { memos: number };
-  _isDuplicate?: boolean;
-}
+import type { CompanySetting, CompanyProgress, Company } from '@/types';
 
 interface ApiResponse {
   companies: Company[];
@@ -62,6 +22,9 @@ interface Filters {
   status: string;         // '' | 'active' | 'completed' | 'churned'
   startDate: string;
   endDate: string;
+  noProgressThisMonth: string; // '' | 'true'
+  paymentAmountMin: string;
+  paymentAmountMax: string;
 }
 
 /* ────────────────────── Solution status helpers ────────────── */
@@ -100,6 +63,13 @@ function getHomepageStatus(setting: CompanySetting | null, progress: CompanyProg
   if (!setting.hasHomepage) return 'not_applicable';
   if (!progress) return 'pending';
   return progress.homepageDone ? 'done' : 'pending';
+}
+
+function getSeoStatus(setting: CompanySetting | null, progress: CompanyProgress | null): CellStatus {
+  if (!setting) return 'none';
+  if (!setting.hasSeo) return 'not_applicable';
+  if (!progress) return 'pending';
+  return progress.seoDone ? 'done' : 'pending';
 }
 
 function getVideoStatus(setting: CompanySetting | null, progress: CompanyProgress | null): { status: CellStatus; type: string | null } {
@@ -194,6 +164,10 @@ export default function CompaniesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
 
+  // 정렬
+  const [sortKey, setSortKey] = useState<string>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
   // 신규 업체 등록
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -202,6 +176,34 @@ export default function CompaniesPage() {
     companyName: '', representative: '', phone: '', paymentDate: new Date().toISOString().slice(0, 10),
     staffName: '', managerName: '', cardCompany: '', paymentAmount: '',
   });
+
+  // 커스텀 확인 모달
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'warning' | 'danger';
+    confirmLabel?: string;
+    resolve?: (v: boolean) => void;
+  }>({ open: false, title: '', message: '', type: 'info' });
+
+  const showConfirm = (title: string, message: string, type: 'info' | 'warning' | 'danger' = 'info', confirmLabel?: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfirmModal({ open: true, title, message, type, confirmLabel, resolve });
+    });
+  };
+
+  const closeConfirm = (result: boolean) => {
+    confirmModal.resolve?.(result);
+    setConfirmModal({ open: false, title: '', message: '', type: 'info' });
+  };
+
+  // 토스트 메시지
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -213,6 +215,9 @@ export default function CompaniesPage() {
     status: '',
     startDate: '',
     endDate: '',
+    noProgressThisMonth: '',
+    paymentAmountMin: '',
+    paymentAmountMax: '',
   });
 
   // Applied filters (only update on search click)
@@ -235,6 +240,10 @@ export default function CompaniesPage() {
       if (f.status) params.set('status', f.status);
       if (f.startDate) params.set('startDate', f.startDate);
       if (f.endDate) params.set('endDate', f.endDate);
+      if (f.noProgressThisMonth) params.set('noProgressThisMonth', f.noProgressThisMonth);
+      if (f.paymentAmountMin) params.set('paymentAmountMin', f.paymentAmountMin);
+      if (f.paymentAmountMax) params.set('paymentAmountMax', f.paymentAmountMax);
+      if (sortKey) { params.set('sortKey', sortKey); params.set('sortDir', sortDir); }
 
       const res = await fetch(`/api/companies?${params.toString()}`, {
         credentials: 'include',
@@ -257,7 +266,7 @@ export default function CompaniesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [router, sortKey, sortDir]);
 
   useEffect(() => {
     fetch('/api/auth', { credentials: 'include' }).then(r => r.json()).then(d => setAuthBranch(d.user?.branch || '')).catch(() => {});
@@ -267,11 +276,63 @@ export default function CompaniesPage() {
     fetchCompanies(page, appliedFilters);
   }, [page, appliedFilters, fetchCompanies]);
 
-  // SSE 실시간 반영
-  const refreshData = useCallback(() => {
-    fetchCompanies(page, appliedFilters);
-  }, [page, appliedFilters, fetchCompanies]);
-  useSSERefresh(['company_updated'], refreshData);
+  // SSE 실시간 반영 — 깜빡임 방지: 신규건을 슬라이드 애니메이션으로 상단에 추가
+  const [newIds, setNewIds] = useState<Set<number>>(new Set());
+  const knownIdsRef = useRef<Set<number>>(new Set());
+  const highlightTimerRef = useRef<number | null>(null);
+
+  // 현재 표시 중인 ID 추적
+  useEffect(() => {
+    const ids = new Set(companies.map(c => c.id));
+    knownIdsRef.current = ids;
+  }, [companies]);
+
+  const mergeNewCompanies = useCallback(async () => {
+    if (page !== 1) return; // 1페이지에서만 자동 추가
+    try {
+      const params = new URLSearchParams({ page: '1', pageSize: String(PAGE_SIZE) });
+      if (appliedFilters.search) params.set('search', appliedFilters.search);
+      if (appliedFilters.branch) params.set('branch', appliedFilters.branch);
+      if (appliedFilters.managerName) params.set('managerName', appliedFilters.managerName);
+      if (appliedFilters.staffName) params.set('staffName', appliedFilters.staffName);
+      if (appliedFilters.holding) params.set('holding', appliedFilters.holding);
+      if (appliedFilters.solutionStatus) params.set('solutionStatus', appliedFilters.solutionStatus);
+      if (appliedFilters.status) params.set('status', appliedFilters.status);
+      if (appliedFilters.startDate) params.set('startDate', appliedFilters.startDate);
+      if (appliedFilters.endDate) params.set('endDate', appliedFilters.endDate);
+      if (appliedFilters.noProgressThisMonth) params.set('noProgressThisMonth', appliedFilters.noProgressThisMonth);
+      if (appliedFilters.paymentAmountMin) params.set('paymentAmountMin', appliedFilters.paymentAmountMin);
+      if (appliedFilters.paymentAmountMax) params.set('paymentAmountMax', appliedFilters.paymentAmountMax);
+
+      const res = await fetch(`/api/companies?${params.toString()}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data: ApiResponse = await res.json();
+      const freshCompanies = data.companies || [];
+
+      // 새로 추가된 업체 찾기
+      const addedIds = new Set<number>();
+      for (const c of freshCompanies) {
+        if (!knownIdsRef.current.has(c.id)) addedIds.add(c.id);
+      }
+
+      if (addedIds.size > 0 || data.total !== total) {
+        setNewIds(addedIds);
+        setCompanies(freshCompanies);
+        setTotal(data.total);
+        // 이전 타이머 정리 후 새 타이머
+        if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = window.setTimeout(() => setNewIds(new Set()), 2000);
+      }
+    } catch { /* silent */ }
+  }, [page, appliedFilters, total]);
+  useSSERefresh(['company_updated'], mergeNewCompanies);
+
+  // 하이라이트 타이머 cleanup
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
 
   // Escape key closes modal
   useEffect(() => {
@@ -295,6 +356,17 @@ export default function CompaniesPage() {
     setAppliedFilters({ ...filters });
   }
 
+  function handleSort(key: string) {
+    if (sortKey === key) {
+      if (sortDir === 'desc') setSortDir('asc');
+      else { setSortKey(''); setSortDir('desc'); } // 3번째 클릭: 해제
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    setPage(1);
+  }
+
   function handleReset() {
     const empty: Filters = {
       search: '',
@@ -306,6 +378,9 @@ export default function CompaniesPage() {
       status: '',
       startDate: '',
       endDate: '',
+      noProgressThisMonth: '',
+      paymentAmountMin: '',
+      paymentAmountMax: '',
     };
     setFilters(empty);
     setPage(1);
@@ -349,19 +424,20 @@ export default function CompaniesPage() {
       const data = await res.json();
       if (res.status === 409 && data.duplicate) {
         // 중복 경고 → 확인 후 force 등록
-        if (confirm(data.message)) {
+        const ok = await showConfirm('중복 업체 확인', data.message, 'warning', '등록');
+        if (ok) {
           await handleCreateCompany(e, true);
         }
         return;
       }
-      if (!res.ok) { alert(data.message || '등록 실패'); return; }
-      alert('업체가 등록되었습니다.');
+      if (!res.ok) { showToast(data.message || '등록 실패', 'error'); return; }
+      showToast('업체가 등록되었습니다.');
       setShowCreateModal(false);
       setCreateForm({ companyName: '', representative: '', phone: '', paymentDate: new Date().toISOString().slice(0, 10), staffName: '', managerName: '', cardCompany: '', paymentAmount: '' });
       fetchCompanies(1, appliedFilters);
       setPage(1);
     } catch {
-      alert('업체 등록 중 오류가 발생했습니다.');
+      showToast('업체 등록 중 오류가 발생했습니다.', 'error');
     } finally {
       setCreating(false);
     }
@@ -457,7 +533,7 @@ export default function CompaniesPage() {
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2 11h10" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            CSV 내보내기
+            엑셀 내보내기
           </button>
         </div>
       </div>
@@ -501,7 +577,7 @@ export default function CompaniesPage() {
             <path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           필터
-          {(appliedFilters.search || appliedFilters.branch || appliedFilters.managerName || appliedFilters.staffName || appliedFilters.holding || appliedFilters.solutionStatus || appliedFilters.status || appliedFilters.startDate || appliedFilters.endDate) && (
+          {(appliedFilters.search || appliedFilters.branch || appliedFilters.managerName || appliedFilters.staffName || appliedFilters.holding || appliedFilters.solutionStatus || appliedFilters.status || appliedFilters.startDate || appliedFilters.endDate || appliedFilters.noProgressThisMonth || appliedFilters.paymentAmountMin || appliedFilters.paymentAmountMax) && (
             <span
               style={{
                 width: '6px',
@@ -607,9 +683,39 @@ export default function CompaniesPage() {
                 style={{ ...inputStyle, width: '100px', cursor: 'pointer' }}
               >
                 <option value="">전체 상태</option>
-                <option value="completed">계약완료</option>
+                <option value="active">활성</option>
+                <option value="completed">완료</option>
                 <option value="churned">해지</option>
               </select>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>결제금액</span>
+                <input
+                  type="number"
+                  placeholder="최소"
+                  value={filters.paymentAmountMin}
+                  onChange={e => handleFilterChange('paymentAmountMin', e.target.value)}
+                  style={{ ...inputStyle, width: '90px' }}
+                />
+                <span style={{ color: '#94a3b8', fontSize: '12px' }}>~</span>
+                <input
+                  type="number"
+                  placeholder="최대"
+                  value={filters.paymentAmountMax}
+                  onChange={e => handleFilterChange('paymentAmountMax', e.target.value)}
+                  style={{ ...inputStyle, width: '90px' }}
+                />
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={filters.noProgressThisMonth === 'true'}
+                  onChange={e => handleFilterChange('noProgressThisMonth', e.target.checked ? 'true' : '')}
+                  style={{ accentColor: '#dc2626' }}
+                />
+                이번달 미진행
+              </label>
 
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
@@ -669,7 +775,7 @@ export default function CompaniesPage() {
         <table
           style={{
             width: '100%',
-            minWidth: '1120px',
+            minWidth: '1180px',
             borderCollapse: 'collapse',
             fontSize: '13px',
           }}
@@ -682,25 +788,44 @@ export default function CompaniesPage() {
                 borderBottom: '2px solid #e2e8f0',
               }}
             >
-              {TABLE_COLUMNS.map(col => (
-                <th
-                  key={col.key}
-                  style={{
-                    padding: '10px 8px',
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    color: '#475569',
-                    textAlign: col.align as 'left' | 'center',
-                    whiteSpace: 'nowrap',
-                    width: col.width,
-                    letterSpacing: '0.01em',
-                    borderBottom: '2px solid #e2e8f0',
-                    backgroundColor: '#f8fafc',
-                  }}
-                >
-                  {col.label}
-                </th>
-              ))}
+              {TABLE_COLUMNS.map(col => {
+                const sortable = ['paymentDate', 'paymentAmount', 'staffName'].includes(col.key);
+                const isSorted = sortKey === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    onClick={sortable ? () => handleSort(col.key) : undefined}
+                    onKeyDown={sortable ? (e) => { if (e.key === 'Enter') handleSort(col.key); } : undefined}
+                    tabIndex={sortable ? 0 : undefined}
+                    role={sortable ? 'button' : undefined}
+                    style={{
+                      padding: '10px 8px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      color: isSorted ? '#2563eb' : '#475569',
+                      textAlign: col.align as 'left' | 'center',
+                      whiteSpace: 'nowrap',
+                      width: col.width,
+                      letterSpacing: '0.01em',
+                      borderBottom: '2px solid #e2e8f0',
+                      backgroundColor: isSorted ? '#eff6ff' : '#f8fafc',
+                      cursor: sortable ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      outline: 'none',
+                    }}
+                  >
+                    {col.label}
+                    {sortable && isSorted && (
+                      <span style={{ marginLeft: '2px', fontSize: '10px' }}>
+                        {sortDir === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
+                    {sortable && !isSorted && (
+                      <span style={{ marginLeft: '2px', fontSize: '10px', color: '#cbd5e1' }}>⇅</span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
@@ -754,6 +879,7 @@ export default function CompaniesPage() {
                   key={company.id}
                   company={company}
                   isEven={idx % 2 === 1}
+                  isNew={newIds.has(company.id)}
                   onClick={() => handleRowClick(company.id)}
                 />
               ))
@@ -908,14 +1034,6 @@ export default function CompaniesPage() {
                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
                 </label>
               ))}
-              <label style={{ fontSize: 13 }}>
-                <span style={{ display: 'block', marginBottom: 4, fontWeight: 500, color: '#374151' }}>카드사</span>
-                <select value={createForm.cardCompany} onChange={(e) => setCreateForm({ ...createForm, cardCompany: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}>
-                  <option value="">선택 안함</option>
-                  {CARD_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
                 <button type="button" onClick={() => setShowCreateModal(false)}
                   style={{ padding: '10px 20px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>취소</button>
@@ -929,11 +1047,91 @@ export default function CompaniesPage() {
         </div>
       )}
 
+      {/* 커스텀 확인 모달 */}
+      {confirmModal.open && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}
+            onClick={() => closeConfirm(false)} />
+          <div style={{
+            position: 'relative', width: '100%', maxWidth: '400px', margin: '0 16px',
+            backgroundColor: '#fff', borderRadius: '12px', padding: '28px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+            animation: 'fadeInUp 0.2s ease-out',
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: '48px', height: '48px', borderRadius: '50%',
+                backgroundColor: confirmModal.type === 'danger' ? '#fef2f2' : confirmModal.type === 'warning' ? '#fffbeb' : '#eff6ff',
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={confirmModal.type === 'danger' ? '#dc2626' : confirmModal.type === 'warning' ? '#d97706' : '#2563eb'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {confirmModal.type === 'danger' ? (
+                    <><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></>
+                  ) : (
+                    <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>
+                  )}
+                </svg>
+              </div>
+            </div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', textAlign: 'center', margin: '0 0 8px 0' }}>
+              {confirmModal.title}
+            </h3>
+            <p style={{ fontSize: '14px', color: '#475569', textAlign: 'center', margin: '0 0 24px 0', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+              {confirmModal.message}
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => closeConfirm(false)}
+                style={{
+                  flex: 1, height: '42px', fontSize: '14px', fontWeight: 600,
+                  color: '#475569', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
+                  borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                취소
+              </button>
+              <button onClick={() => closeConfirm(true)}
+                style={{
+                  flex: 1, height: '42px', fontSize: '14px', fontWeight: 600,
+                  color: '#fff',
+                  backgroundColor: confirmModal.type === 'danger' ? '#dc2626' : '#2563eb',
+                  border: 'none', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                {confirmModal.confirmLabel || '확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 토스트 메시지 */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          padding: '12px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: 500,
+          color: '#fff',
+          backgroundColor: toast.type === 'error' ? '#dc2626' : '#16a34a',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          animation: 'fadeInUp 0.2s ease-out',
+        }}>
+          {toast.message}
+        </div>
+      )}
+
       {/* Spin animation keyframes */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>
@@ -947,19 +1145,22 @@ export default function CompaniesPage() {
 function CompanyRow({
   company,
   isEven,
+  isNew,
   onClick,
 }: {
   company: Company;
   isEven: boolean;
+  isNew?: boolean;
   onClick: () => void;
 }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const { setting, progress } = company;
 
-  const rewardStatus = getRewardStatus(setting, progress);
   const blogInfo = getBlogStatus(setting, progress);
   const instaInfo = getInstaStatus(setting, progress);
   const homepageStatus = getHomepageStatus(setting, progress);
+  const seoStatus = getSeoStatus(setting, progress);
   const videoInfo = getVideoStatus(setting, progress);
   const contract = getContractDday(setting);
 
@@ -972,7 +1173,7 @@ function CompanyRow({
 
   let rowBg: string;
   let borderLeft = '';
-  if (isHovered) {
+  if (isHovered || isFocused) {
     rowBg = '#f0f7ff';
   } else if (isExpired) {
     rowBg = '#fef2f2';
@@ -992,26 +1193,28 @@ function CompanyRow({
   return (
     <tr
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter') onClick(); }}
+      tabIndex={0}
+      role="link"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       style={{
-        backgroundColor: rowBg,
+        backgroundColor: isNew ? '#eff6ff' : rowBg,
         borderBottom: '1px solid #f1f5f9',
-        borderLeft: borderLeft || undefined,
+        borderLeft: isNew ? '3px solid #2563eb' : borderLeft || undefined,
         cursor: 'pointer',
-        transition: 'background-color 0.1s',
+        transition: 'background-color 0.5s, opacity 0.5s',
         height: '40px',
+        outline: 'none',
         opacity: company.status === 'churned' ? 0.5 : 1,
+        animation: isNew ? 'slideIn 0.4s ease-out' : undefined,
       }}
     >
       {/* 결제일 */}
       <td style={{ ...tdBase, textAlign: 'center', color: '#64748b' }}>
         {formatDateShort(company.paymentDate)}
-      </td>
-
-      {/* 카드사 */}
-      <td style={{ ...tdBase, textAlign: 'center', color: '#475569', fontSize: '12px' }}>
-        {company.cardCompany || '—'}
       </td>
 
       {/* 결제금액 */}
@@ -1047,9 +1250,39 @@ function CompanyRow({
         )}
       </td>
 
+      {/* 진행 스텝 */}
+      <td style={{ ...tdBase, textAlign: 'center' }}>
+        {(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const step = (company as any)._step as number | undefined;
+          if (!step || step <= 1) return <span style={{ fontSize: '10px', fontWeight: 600, color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '1px 5px', borderRadius: '3px' }}>미설정</span>;
+          if (step === 2) return <span style={{ fontSize: '10px', fontWeight: 600, color: '#b45309', backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '1px 5px', borderRadius: '3px' }}>S2</span>;
+          if (step === 3) return <span style={{ fontSize: '10px', fontWeight: 600, color: '#2563eb', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '1px 5px', borderRadius: '3px' }}>S3</span>;
+          return <span style={{ fontSize: '10px', fontWeight: 600, color: '#16a34a', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1px 5px', borderRadius: '3px' }}>진행</span>;
+        })()}
+      </td>
+
       {/* 지사 */}
-      <td style={{ ...tdBase, textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-        {company.branch || <span style={{ color: '#cbd5e1' }}>&mdash;</span>}
+      <td style={{ ...tdBase, textAlign: 'center', fontSize: '12px' }}>
+        {company.branch ? (
+          <span style={{
+            padding: '1px 8px',
+            borderRadius: '3px',
+            fontWeight: 600,
+            fontSize: '11px',
+            ...({
+              '본사': { color: '#1d4ed8', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe' },
+              '인천': { color: '#7c3aed', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe' },
+              '수원': { color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' },
+              '동탄': { color: '#d97706', backgroundColor: '#fffbeb', border: '1px solid #fde68a' },
+              '용인': { color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca' },
+              '부산': { color: '#0891b2', backgroundColor: '#ecfeff', border: '1px solid #a5f3fc' },
+              '안산': { color: '#be185d', backgroundColor: '#fdf2f8', border: '1px solid #fbcfe8' },
+            }[company.branch] || { color: '#64748b', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }),
+          }}>
+            {company.branch}
+          </span>
+        ) : <span style={{ color: '#cbd5e1' }}>&mdash;</span>}
       </td>
 
       {/* 업체명 */}
@@ -1058,38 +1291,37 @@ function CompanyRow({
           ...tdBase,
           fontWeight: 600,
           color: '#0f172a',
-          maxWidth: '120px',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          maxWidth: '140px',
         }}
       >
-        {company.companyName}
-        {(company._count?.memos ?? 0) > 0 && (
-          <span
-            title={`메모 ${company._count!.memos}건`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: 4,
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: '#ede9fe',
-              color: '#7c3aed',
-              fontSize: 9,
-              fontWeight: 700,
-              verticalAlign: 'middle',
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            {company._count!.memos}
-          </span>
-        )}
-        {company._isDuplicate && <span style={{ marginLeft: 4, background: '#fecaca', color: '#dc2626', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600 }}>중복</span>}
-        {company.status === 'churned' && <span style={{ marginLeft: 4, background: '#fecaca', color: '#dc2626', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600 }}>해지</span>}
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {company.companyName}
+        </div>
+        <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+          {(company._count?.memos ?? 0) > 0 && (
+            <span
+              title={`메모 ${company._count!.memos}건`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                background: '#ede9fe',
+                color: '#7c3aed',
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              {company._count!.memos}
+            </span>
+          )}
+          {company._isDuplicate && <span style={{ background: '#fecaca', color: '#dc2626', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600 }}>중복</span>}
+          {company.status === 'churned' && <span style={{ background: '#fecaca', color: '#dc2626', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600 }}>해지</span>}
+        </div>
       </td>
 
       {/* 대표자 */}
@@ -1107,33 +1339,62 @@ function CompanyRow({
         {company.managerName}
       </td>
 
-      {/* 리워드 */}
-      <td style={tdBase}>
-        <SolutionCell status={rewardStatus}>
-          {rewardStatus === 'done' ? <CheckIcon /> : rewardStatus === 'pending' ? 'X' : null}
+      {/* 리포트 */}
+      <td style={{ ...tdBase, cursor: company._reportDone && company.placeId ? 'pointer' : undefined }}
+        onClick={company._reportDone && company.placeId ? (e) => {
+          e.stopPropagation();
+          // 리포트 URL을 API에서 가져와 바로 이동
+          fetch(`/api/homejeonsan?action=report_stats&placeNumber=${encodeURIComponent(company.placeId!)}`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => {
+              if (d?.reportUrl) {
+                if (d.placeName && d.placeName !== company.companyName && !company.companyName.includes(d.placeName) && !d.placeName.includes(company.companyName)) {
+                  alert(`리포트 업체명 불일치\nCRM: ${company.companyName}\n모집플레이스: ${d.placeName}\n\nplaceId가 잘못 입력되었을 수 있습니다.`);
+                }
+                window.open(d.reportUrl, '_blank');
+              } else {
+                window.open(`/companies/${company.id}`, '_blank');
+              }
+            })
+            .catch(() => window.open(`/companies/${company.id}`, '_blank'));
+        } : undefined}
+        title={company._reportDone ? '클릭하여 리포트 바로가기' : undefined}
+      >
+        <SolutionCell status={company._reportDone ? 'done' : setting ? 'pending' : 'none'}>
+          {company._reportDone ? <><CheckIcon /><span style={{ fontSize: '9px', marginLeft: '2px' }}>보기</span></> : setting ? 'X' : null}
         </SolutionCell>
       </td>
 
       {/* 블로그 */}
       <td style={tdBase}>
-        <ProgressCell status={blogInfo.status} current={blogInfo.current} target={blogInfo.target} />
+        <ProgressCell status={blogInfo.status} current={blogInfo.current} target={blogInfo.target}
+          lastDate={blogInfo.current > 0 && progress?.blogLastAt ? formatDateShort(progress.blogLastAt as string) : undefined} />
       </td>
 
       {/* 인스타 */}
       <td style={tdBase}>
-        <ProgressCell status={instaInfo.status} current={instaInfo.current} target={instaInfo.target} />
+        <ProgressCell status={instaInfo.status} current={instaInfo.current} target={instaInfo.target}
+          lastDate={instaInfo.current > 0 && progress?.instaLastAt ? formatDateShort(progress.instaLastAt as string) : undefined} />
       </td>
 
       {/* 홈페이지 */}
       <td style={tdBase}>
-        <SolutionCell status={homepageStatus}>
+        <SolutionCell status={homepageStatus} lastDate={homepageStatus === 'done' && progress?.homepageLastAt ? formatDateShort(progress.homepageLastAt as string) : undefined}>
           {homepageStatus === 'done' ? <CheckIcon /> : homepageStatus === 'pending' ? 'X' : null}
+        </SolutionCell>
+      </td>
+
+      {/* SEO */}
+      <td style={tdBase}>
+        <SolutionCell status={seoStatus} lastDate={seoStatus === 'done' && progress?.seoLastAt ? formatDateShort(progress.seoLastAt as string) : undefined}>
+          {seoStatus === 'done' ? <CheckIcon /> : seoStatus === 'pending' ? 'X' : null}
         </SolutionCell>
       </td>
 
       {/* 영상 */}
       <td style={tdBase}>
-        <VideoCell status={videoInfo.status} type={videoInfo.type} />
+        <VideoCell status={videoInfo.status} type={videoInfo.type}
+          lastDate={videoInfo.status === 'done' && progress?.videoLastAt ? formatDateShort(progress.videoLastAt as string) : undefined} />
       </td>
 
       {/* 홀딩 */}
@@ -1170,9 +1431,11 @@ function CompanyRow({
 function SolutionCell({
   status,
   children,
+  lastDate,
 }: {
   status: CellStatus;
   children?: React.ReactNode;
+  lastDate?: string;
 }) {
   const style = CELL_STYLES[status];
   const isInactive = status === 'none' || status === 'not_applicable';
@@ -1181,18 +1444,21 @@ function SolutionCell({
     <div
       style={{
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '26px',
+        minHeight: '26px',
         borderRadius: '3px',
         backgroundColor: style.bg,
         color: style.text,
         fontSize: '12px',
         fontWeight: isInactive ? 400 : 600,
         margin: '0 4px',
+        gap: '1px',
       }}
     >
       {isInactive ? <span>&mdash;</span> : children}
+      {lastDate && <span style={{ fontSize: '9px', fontWeight: 400, color: '#94a3b8', lineHeight: 1 }}>{lastDate}</span>}
     </div>
   );
 }
@@ -1201,10 +1467,12 @@ function ProgressCell({
   status,
   current,
   target,
+  lastDate,
 }: {
   status: CellStatus;
   current: number;
   target: number;
+  lastDate?: string;
 }) {
   const style = CELL_STYLES[status];
   const isInactive = status === 'none' || status === 'not_applicable';
@@ -1217,7 +1485,7 @@ function ProgressCell({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '32px',
+        minHeight: '32px',
         borderRadius: '3px',
         backgroundColor: style.bg,
         color: style.text,
@@ -1225,7 +1493,7 @@ function ProgressCell({
         fontWeight: isInactive ? 400 : 600,
         margin: '0 4px',
         padding: '2px 4px',
-        gap: '2px',
+        gap: '1px',
       }}
     >
       {isInactive ? (
@@ -1263,6 +1531,11 @@ function ProgressCell({
               }}
             />
           </div>
+          {lastDate && (
+            <span style={{ fontSize: '9px', fontWeight: 400, color: '#94a3b8', lineHeight: 1 }}>
+              {lastDate}
+            </span>
+          )}
         </>
       )}
     </div>
@@ -1272,9 +1545,11 @@ function ProgressCell({
 function VideoCell({
   status,
   type,
+  lastDate,
 }: {
   status: CellStatus;
   type: string | null;
+  lastDate?: string;
 }) {
   const style = CELL_STYLES[status];
   const isInactive = status === 'none' || status === 'not_applicable';
@@ -1287,7 +1562,7 @@ function VideoCell({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '32px',
+        minHeight: '32px',
         borderRadius: '3px',
         backgroundColor: style.bg,
         color: style.text,
@@ -1311,6 +1586,7 @@ function VideoCell({
           <span>
             {status === 'done' ? <CheckIcon /> : 'X'}
           </span>
+          {lastDate && <span style={{ fontSize: '9px', fontWeight: 400, color: '#94a3b8', lineHeight: 1 }}>{lastDate}</span>}
         </>
       )}
     </div>
@@ -1331,18 +1607,19 @@ function CheckIcon() {
 
 const TABLE_COLUMNS = [
   { key: 'paymentDate', label: '결제일', width: '64px', align: 'center' },
-  { key: 'cardCompany', label: '카드사', width: '56px', align: 'center' },
   { key: 'paymentAmount', label: '결제금액', width: '80px', align: 'right' },
   { key: 'contract', label: '계약', width: '64px', align: 'center' },
+  { key: 'step', label: '진행', width: '48px', align: 'center' },
   { key: 'branch', label: '지사', width: '52px', align: 'center' },
   { key: 'companyName', label: '업체명', width: '120px', align: 'left' },
   { key: 'representative', label: '대표자', width: '68px', align: 'left' },
   { key: 'staffName', label: '담당자', width: '64px', align: 'left' },
   { key: 'managerName', label: '간부', width: '64px', align: 'left' },
-  { key: 'reward', label: '리워드', width: '56px', align: 'center' },
+  { key: 'report', label: '리포트', width: '48px', align: 'center' },
   { key: 'blog', label: '블로그', width: '64px', align: 'center' },
   { key: 'insta', label: '인스타', width: '64px', align: 'center' },
   { key: 'homepage', label: '홈페이지', width: '60px', align: 'center' },
+  { key: 'seo', label: 'SEO', width: '48px', align: 'center' },
   { key: 'video', label: '영상', width: '60px', align: 'center' },
   { key: 'holding', label: '홀딩', width: '48px', align: 'center' },
 ];

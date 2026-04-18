@@ -12,6 +12,10 @@ import {
 /**
  * POST /api/admin/fix-fake-logs
  *
+ * [일회성 마이그레이션] 2026-04-16 실행 완료.
+ * 재실행 시 추가 가짜 로그가 없으면 no-op.
+ * 더 이상 필요 없으면 이 파일을 삭제해도 됨.
+ *
  * system-advance로 생성된 가짜 성공 로그를 찾아서
  * 모집플레이스.com에 실제 등록 여부를 확인하고, 누락분을 등록한다.
  *
@@ -61,6 +65,21 @@ export async function POST(request: NextRequest) {
     });
     const realLogKeys = new Set(realSuccessLogs.map(l => `${l.placeId}|${l.action}`));
 
+    // N+1 방지: company도 배치 조회
+    const allCompanies = await prisma.company.findMany({
+      where: { placeId: { in: allPlaceIds } },
+      select: {
+        id: true,
+        placeId: true,
+        companyName: true,
+        phone: true,
+        staffName: true,
+        branch: true,
+        setting: { select: { contractStart: true, contractEnd: true } },
+      },
+    });
+    const companyByPlace = new Map(allCompanies.map(c => [c.placeId!, c]));
+
     const results: Array<{
       placeId: string;
       companyName: string | null;
@@ -72,18 +91,7 @@ export async function POST(request: NextRequest) {
     }> = [];
 
     for (const [placeId, logs] of byPlace) {
-      // 해당 placeId의 업체 조회
-      const company = await prisma.company.findFirst({
-        where: { placeId },
-        select: {
-          id: true,
-          companyName: true,
-          phone: true,
-          staffName: true,
-          branch: true,
-          setting: { select: { contractStart: true, contractEnd: true } },
-        },
-      });
+      const company = companyByPlace.get(placeId) || null;
 
       if (!company) {
         for (const log of logs) {
@@ -283,12 +291,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // step 일괄 갱신
+    // step 일괄 갱신 (배치 조회로 N+1 방지)
     if (!dryRun) {
       const affectedPlaceIds = [...new Set(results.map(r => r.placeId))];
-      for (const pid of affectedPlaceIds) {
-        const comp = await prisma.company.findFirst({ where: { placeId: pid }, select: { id: true } });
-        if (comp) await updateStep(comp.id).catch(() => {});
+      const affectedCompanies = await prisma.company.findMany({
+        where: { placeId: { in: affectedPlaceIds } },
+        select: { id: true },
+      });
+      for (const comp of affectedCompanies) {
+        await updateStep(comp.id).catch(() => {});
       }
     }
 

@@ -48,6 +48,19 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
       continue;
     }
 
+    // 재시도 횟수 추적: errorMessage에서 "(retry N)" 패턴으로 카운트
+    const retryMatch = msg.match(/\(retry (\d+)\)/);
+    const retryCount = retryMatch ? parseInt(retryMatch[1]) : 0;
+    if (retryCount >= 3) {
+      // 3회 이상 실패 → 재시도 중단, 수동 처리로 전환
+      await prisma.homejeonsanLog.update({
+        where: { id: log.id },
+        data: { errorMessage: `${retryCount}회 재시도 실패 (수동 등록 필요)` },
+      });
+      results.stillFailed++;
+      continue;
+    }
+
     results.retried++;
 
     try {
@@ -60,6 +73,10 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
           });
           results.succeeded++;
         } else {
+          await prisma.homejeonsanLog.update({
+            where: { id: log.id },
+            data: { errorMessage: `등록 실패 (수동 등록 필요) (retry ${retryCount + 1})` },
+          });
           results.stillFailed++;
         }
       } else if (log.action === 'register_report') {
@@ -72,6 +89,10 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
           },
         });
         if (!company?.phone || !company.setting?.contractStart) {
+          await prisma.homejeonsanLog.update({
+            where: { id: log.id },
+            data: { errorMessage: `필수 정보 없음 (수동 등록 필요) (retry ${retryCount + 1})` },
+          });
           results.stillFailed++;
           continue;
         }
@@ -96,6 +117,10 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
           await updateStep(company.id).catch(() => {});
           results.succeeded++;
         } else {
+          await prisma.homejeonsanLog.update({
+            where: { id: log.id },
+            data: { errorMessage: `등록 실패 (수동 등록 필요) (retry ${retryCount + 1})` },
+          });
           results.stillFailed++;
         }
       } else {
@@ -103,6 +128,10 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
       }
     } catch (err) {
       console.error('[retryPendingRegistrations] log id', log.id, err);
+      await prisma.homejeonsanLog.update({
+        where: { id: log.id },
+        data: { errorMessage: `백그라운드 처리 실패 (retry ${retryCount + 1})` },
+      }).catch(() => {});
       results.stillFailed++;
     }
   }

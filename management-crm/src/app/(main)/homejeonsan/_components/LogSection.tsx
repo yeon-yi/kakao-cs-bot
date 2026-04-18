@@ -388,12 +388,14 @@ const LogSection = forwardRef<LogSectionRef>(function LogSection(_, ref) {
                         borderRadius: "9999px",
                         ...(log.status !== "success"
                           ? { color: "#dc2626", backgroundColor: "#fef2f2", border: "1px solid #fecaca" }
-                          : log.errorMessage
-                            ? { color: "#b45309", backgroundColor: "#fffbeb", border: "1px solid #fde68a" }
-                            : { color: "#15803d", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }),
+                          : log.errorMessage?.startsWith("등록 진행 중")
+                            ? { color: "#2563eb", backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }
+                            : log.errorMessage
+                              ? { color: "#b45309", backgroundColor: "#fffbeb", border: "1px solid #fde68a" }
+                              : { color: "#15803d", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }),
                       }}
                     >
-                      {log.status !== "success" ? "실패" : log.errorMessage ? "주의" : "성공"}
+                      {log.status !== "success" ? "실패" : log.errorMessage?.startsWith("등록 진행 중") ? "대기" : log.errorMessage ? "주의" : "성공"}
                     </span>
                   </td>
                   <td style={s.td}>
