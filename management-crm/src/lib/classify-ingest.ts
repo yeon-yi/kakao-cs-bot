@@ -85,8 +85,9 @@ export function classifyIngest(ingest: IngestRow): ClassifyResult {
     };
   }
 
-  // 해지방어 (취소 요청) — 제목 + 본문 모두 검사
-  if (CANCEL_SUBJECT_PATTERN.test(subject) || CANCEL_SUBJECT_PATTERN.test(fullBody)) {
+  // 해지방어 — 제목에서 취소/해지 패턴, 본문에서는 더 구체적인 패턴만
+  const CANCEL_BODY_PATTERN = /취소\s*(?:요청서|신청서)|해지\s*(?:요청서|신청서)|플랫폼\s*취소\s*요청/i;
+  if (CANCEL_SUBJECT_PATTERN.test(subject) || CANCEL_BODY_PATTERN.test(fullBody)) {
     return {
       caseType: 'cancel_defense',
       businessName: extractBusinessName(subject, fullBody),

@@ -8,6 +8,7 @@ import { PENDING_PATTERNS } from '@/lib/retry-pending-registrations';
 // POST /api/companies/[id]/advance-step — 사용자가 "다음 단계" 버튼 클릭 시 호출
 // body: { to: 3 | 4 }  (3 = S2→S3, 4 = S3→진행)
 // 즉시 pending 로그 생성 후 응답 → 모집플레이스 등록은 백그라운드에서 처리
+// 백그라운드 실패 시 /api/cron/retry-pending-registrations (10분 cron)이 3회까지 재시도
 
 export async function POST(
   request: NextRequest,

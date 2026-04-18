@@ -4,6 +4,8 @@ import { verifyCronKey } from '@/lib/notification-sender';
 import { classifyIngest } from '@/lib/classify-ingest';
 import { ensureCaseGrouped } from '@/lib/risk-group';
 
+const SYSTEM_ACTOR_ID = 1;
+
 // POST /api/cron/classify-ingests — 미처리 Gmail ingest를 자동 분류 후 RiskCase 생성
 // 10분마다 호출 (Gmail 폴링 크론 직후)
 
@@ -99,7 +101,7 @@ export async function POST(request: Request) {
           await tx.riskCaseLog.create({
             data: {
               caseId: riskCase.id,
-              actorId: 1, // system
+              actorId: SYSTEM_ACTOR_ID,
               action: 'create',
               toValue: 'pending',
               note: 'Gmail 자동 분류',

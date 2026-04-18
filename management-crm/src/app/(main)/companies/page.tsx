@@ -1349,7 +1349,7 @@ function CompanyRow({
             .then(d => {
               if (d?.reportUrl) {
                 if (d.placeName && d.placeName !== company.companyName && !company.companyName.includes(d.placeName) && !d.placeName.includes(company.companyName)) {
-                  alert(`리포트 업체명 불일치\nCRM: ${company.companyName}\n모집플레이스: ${d.placeName}\n\nplaceId가 잘못 입력되었을 수 있습니다.`);
+                  console.warn(`[리포트 불일치] CRM: ${company.companyName}, 모집플: ${d.placeName}, placeId: ${company.placeId}`);
                 }
                 window.open(d.reportUrl, '_blank');
               } else {

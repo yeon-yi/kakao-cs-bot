@@ -32,8 +32,10 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
   const pendingLogs = await prisma.homejeonsanLog.findMany({
     where: {
       status: 'success',
-      errorMessage: { not: null },
       createdAt: { lte: fiveMinutesAgo },
+      OR: PENDING_PATTERNS.retryable.map(p => ({
+        errorMessage: { startsWith: p },
+      })),
     },
     orderBy: { createdAt: 'asc' },
     take: 50,
@@ -48,9 +50,8 @@ export async function retryPendingRegistrations(): Promise<RetryResults> {
       continue;
     }
 
-    // 재시도 횟수 추적: errorMessage에서 "(retry N)" 패턴으로 카운트
     const retryMatch = msg.match(/\(retry (\d+)\)/);
-    const retryCount = retryMatch ? parseInt(retryMatch[1]) : 0;
+    const retryCount = retryMatch ? parseInt(retryMatch[1]) || 3 : 0;
     if (retryCount >= 3) {
       // 3회 이상 실패 → 재시도 중단, 수동 처리로 전환
       await prisma.homejeonsanLog.update({
