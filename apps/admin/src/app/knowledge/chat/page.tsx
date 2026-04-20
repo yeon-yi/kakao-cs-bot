@@ -103,8 +103,8 @@ export default function KnowledgeChatPage() {
   return (
     <div className="mx-auto max-w-3xl flex flex-col h-[calc(100vh-100px)]">
       <div className="mb-4">
-        <h1 className="text-xl font-semibold text-zinc-900">대화형 학습</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">대화형 학습</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           봇에게 질문하여 지식 DB를 검색하고, 답변이 없으면 직접 가르칠 수 있습니다.
         </p>
       </div>

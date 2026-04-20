@@ -106,8 +106,8 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">일반 설정</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">일반 설정</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           API 키, AI 모델, 검색 설정 등을 관리합니다. 변경사항은 즉시 서버에 반영됩니다.
         </p>
       </div>

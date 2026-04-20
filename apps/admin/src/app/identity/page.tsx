@@ -52,8 +52,8 @@ export default function IdentityPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">신원 확인</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">신원 확인</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           채팅방 참여자의 역할을 관리합니다. 직원과 이름이 같은 광고주가 있으면 '이름 충돌'에서 확인하세요.
         </p>
       </div>

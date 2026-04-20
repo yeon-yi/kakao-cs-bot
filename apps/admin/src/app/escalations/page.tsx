@@ -85,12 +85,12 @@ export default function EscalationPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900">에스컬레이션</h1>
+          <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">에스컬레이션</h1>
           {pendingData && pendingData.count > 0 && (
             <Badge variant="destructive" className="px-3 py-1 text-sm">{pendingData.count}건 대기중</Badge>
           )}
         </div>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
           봇이 답변하지 못한 질문을 확인합니다. 답변 등록 시 자동 학습 + 질문 변형 생성 + AI 이해도 검증이 진행됩니다.
         </p>
       </div>

@@ -80,8 +80,8 @@ const KnowledgeItem = memo(function KnowledgeItem({
               <Badge variant="outline" className="text-[10px] text-zinc-400">미검증</Badge>
             )}
           </div>
-          <p className="mt-2.5 font-medium text-zinc-900">{item.question}</p>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-500">{item.answer}</p>
+          <p className="mt-2.5 font-medium text-[hsl(var(--foreground))]">{item.question}</p>
+          <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{item.answer}</p>
           {item.tags && item.tags.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {item.tags.map((tag: string) => (

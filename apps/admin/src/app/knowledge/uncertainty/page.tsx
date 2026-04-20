@@ -80,8 +80,8 @@ export default function UncertaintyPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">불확실 주제</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">불확실 주제</h1>
+        <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
           AI가 확신하지 못하는 주제를 실시간으로 추적합니다. 답변을 등록하면 지식 DB에 추가됩니다.
         </p>
       </div>

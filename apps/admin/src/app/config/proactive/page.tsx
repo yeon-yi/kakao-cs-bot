@@ -57,8 +57,8 @@ export default function ProactivePage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">자동 인사 / 차단 관리</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">자동 인사 / 차단 관리</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           비활성 채팅방에 자동 인사를 보내고, 해지요청한 고객의 방을 차단합니다.
         </p>
       </div>

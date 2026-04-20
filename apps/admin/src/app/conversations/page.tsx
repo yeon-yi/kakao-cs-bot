@@ -47,8 +47,8 @@ export default function ConversationsPage() {
         </button>
 
         <div className="mb-4">
-          <h1 className="text-xl font-semibold text-zinc-900">{selectedRoomId}</h1>
-          <p className="text-sm text-zinc-500 mt-0.5">최근 100건의 메시지를 표시합니다</p>
+          <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">{selectedRoomId}</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">최근 100건의 메시지를 표시합니다</p>
         </div>
 
         {messagesLoading ? (
@@ -68,7 +68,7 @@ export default function ConversationsPage() {
                 const text: string = msg.content || msg.message || '';
                 return (
                   <div key={msg.id || i} className={`group relative flex ${isBot ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`max-w-[70%] rounded-xl px-4 py-2.5 text-sm ${
+                    <div className={`max-w-[70%] rounded-lg px-4 py-2.5 text-sm ${
                       isBot
                         ? 'bg-zinc-100 text-zinc-800'
                         : 'bg-blue-600 text-white'
@@ -109,7 +109,7 @@ export default function ConversationsPage() {
                           {msg.chain_steps && Array.isArray(msg.chain_steps) && msg.chain_steps.length > 1 && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] text-violet-500">
                               <Sparkles size={10} />
-                              {msg.chain_steps.map((s: any) => s.model?.split('/').pop()?.split('-')[0] || s.role).join(' → ')}
+                              {msg.chain_steps.map((s: any) => s.model?.split('/').pop()?.split('-')[0] || s.role).join(' > ')}
                             </span>
                           )}
                           {msg.response_time_ms && (
@@ -161,8 +161,8 @@ export default function ConversationsPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">대화 이력</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">대화 이력</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           채팅방별 대화 내역을 조회합니다. 방 이름을 클릭하면 상세 메시지를 확인할 수 있습니다.
         </p>
       </div>

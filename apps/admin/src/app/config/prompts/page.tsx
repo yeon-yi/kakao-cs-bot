@@ -31,8 +31,8 @@ export default function PromptsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-900">프롬프트 관리</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-xl font-semibold text-[hsl(var(--foreground))]">프롬프트 관리</h1>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
           봇의 응답 생성에 사용되는 시스템 프롬프트를 관리합니다. 변경 시 사유를 기록하여 버전 이력을 관리합니다.
         </p>
       </div>
