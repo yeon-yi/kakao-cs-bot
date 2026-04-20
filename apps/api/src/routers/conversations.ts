@@ -6,18 +6,47 @@ export const conversationsRouter = router({
   rooms: protectedProcedure
     .input(z.object({
       search: z.string().optional(),
+      period: z.enum(['today', 'week', 'month', 'all']).default('all'),
+      hasEscalation: z.boolean().optional(),
+      hasStaff: z.boolean().optional(),
       offset: z.number().default(0),
       limit: z.number().min(1).max(100).default(30),
     }))
     .query(async ({ input }) => {
-      const { search, offset, limit } = input;
+      const { search, period, hasEscalation, hasStaff, offset, limit } = input;
       const params: any[] = [];
-      let where = '';
+      const conditions: string[] = [];
+
+      // period → since
+      const now = new Date();
+      let since: Date | null = null;
+      if (period === 'today') {
+        since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (period === 'week') {
+        since = new Date(now.getTime() - 7 * 86_400_000);
+      } else if (period === 'month') {
+        since = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
 
       if (search) {
         params.push(`%${search}%`);
-        where = `WHERE c.room_id ILIKE $${params.length} OR c.user_name ILIKE $${params.length}`;
+        conditions.push(`(c.room_id ILIKE $${params.length} OR c.user_name ILIKE $${params.length})`);
       }
+
+      if (since) {
+        params.push(since);
+        conditions.push(`c.created_at >= $${params.length}`);
+      }
+
+      if (hasEscalation) {
+        conditions.push(`EXISTS (SELECT 1 FROM escalations e WHERE e.room_id = c.room_id)`);
+      }
+
+      if (hasStaff) {
+        conditions.push(`EXISTS (SELECT 1 FROM room_members rm WHERE rm.room_id = c.room_id AND rm.role = 'company_staff')`);
+      }
+
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const countResult = await queryOne(
         `SELECT COUNT(DISTINCT room_id) as cnt FROM conversations c ${where}`,
