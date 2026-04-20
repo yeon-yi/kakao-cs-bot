@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, memo } from 'react';
-import Link from 'next/link';
+import { useState, memo, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input, Textarea, Select } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { PlusCircle, Pencil, Trash2, X, Check, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
+import { DrawerSheet } from '@/components/ui/drawer-sheet';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Pencil, Trash2, X, Check, CheckCircle2, ShieldAlert, Plus, Upload } from 'lucide-react';
+import { KnowledgeAddForm } from './_forms/add-form';
+import { KnowledgeUploadForm } from './_forms/upload-form';
 
 const CATEGORIES = ['네이버트래픽', '블로그기자단', '인스타그램', '홈페이지', 'SEO', '영상촬영', '일반'];
 
@@ -113,7 +118,11 @@ const KnowledgeItem = memo(function KnowledgeItem({
   );
 });
 
-export default function KnowledgeListPage() {
+function KnowledgeInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const action = searchParams.get('action');
+
   const [tier, setTier] = useState<number | undefined>();
   const [category, setCategory] = useState('');
   const [offset, setOffset] = useState(0);
@@ -144,6 +153,14 @@ export default function KnowledgeListPage() {
   const bulkVerifyMutation = trpc.knowledge.bulkVerify.useMutation({
     onSuccess: () => { utils.knowledge.list.invalidate(); setSelectedIds(new Set()); },
   });
+
+  const setAction = (value: 'add' | 'upload' | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) params.set('action', value);
+    else params.delete('action');
+    const qs = params.toString();
+    router.replace(qs ? `/knowledge?${qs}` : '/knowledge');
+  };
 
   function startEdit(item: any) {
     setEditId(item.id);
@@ -185,16 +202,21 @@ export default function KnowledgeListPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900">지식 관리</h1>
-          <p className="mt-1 text-sm text-zinc-500">총 {data?.total ?? 0}건의 지식이 등록되어 있습니다</p>
-        </div>
-        <Link href="/knowledge/add">
-          <Button><PlusCircle size={16} />지식 추가</Button>
-        </Link>
-      </div>
+    <div className="max-w-6xl mx-auto">
+      <PageHeader
+        title="지식 베이스"
+        subtitle={`봇이 답변에 참고하는 QA를 관리합니다 (총 ${data?.total ?? 0}건)`}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setAction('upload')}>
+              <Upload size={14} /> 파일 업로드
+            </Button>
+            <Button size="sm" onClick={() => setAction('add')}>
+              <Plus size={14} /> 추가
+            </Button>
+          </>
+        }
+      />
 
       <div className="mb-4 flex items-center gap-3">
         <Select value={tier ?? ''} onChange={(e) => { setTier(e.currentTarget.value ? Number(e.currentTarget.value) : undefined); setOffset(0); }}
@@ -255,9 +277,7 @@ export default function KnowledgeListPage() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-        </div>
+        <LoadingSpinner fullPage />
       ) : (
         <>
           <div className="space-y-3">
@@ -283,6 +303,39 @@ export default function KnowledgeListPage() {
           </div>
         </>
       )}
+
+      <DrawerSheet
+        open={action === 'add'}
+        onClose={() => setAction(null)}
+        title="지식 추가"
+        description="봇이 답변에 사용할 QA를 등록합니다"
+      >
+        <KnowledgeAddForm
+          onSuccess={() => { setAction(null); utils.knowledge.list.invalidate(); }}
+          onCancel={() => setAction(null)}
+        />
+      </DrawerSheet>
+
+      <DrawerSheet
+        open={action === 'upload'}
+        onClose={() => setAction(null)}
+        title="파일 업로드"
+        description="문서에서 AI가 QA를 추출해 일괄 등록합니다"
+        widthClass="w-[520px]"
+      >
+        <KnowledgeUploadForm
+          onSuccess={() => { setAction(null); utils.knowledge.list.invalidate(); }}
+          onCancel={() => setAction(null)}
+        />
+      </DrawerSheet>
     </div>
+  );
+}
+
+export default function KnowledgePage() {
+  return (
+    <Suspense fallback={<LoadingSpinner fullPage />}>
+      <KnowledgeInner />
+    </Suspense>
   );
 }
