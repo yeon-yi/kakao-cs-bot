@@ -9,7 +9,7 @@ const variants = {
   warning: 'bg-amber-50 text-amber-700',
   destructive: 'bg-red-50 text-red-700',
   purple: 'bg-violet-50 text-violet-700',
-  outline: 'border border-[hsl(var(--border))] text-[hsl(var(--muted))] bg-white',
+  outline: 'border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] bg-white',
 } as const;
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {

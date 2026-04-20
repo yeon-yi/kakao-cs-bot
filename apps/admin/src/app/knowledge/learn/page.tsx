@@ -138,7 +138,7 @@ export default function LearnPage() {
     <div className="max-w-[960px]">
       <div className="mb-6">
         <h1 className="text-lg font-bold text-[hsl(var(--foreground))]">대화 학습</h1>
-        <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+        <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
           실제 카카오톡 대화를 분석하여 Q&A 지식과 말투를 학습합니다
         </p>
       </div>
@@ -165,7 +165,7 @@ export default function LearnPage() {
             className="w-full min-h-[280px] rounded-md border border-[hsl(var(--input))] bg-white px-3 py-3 text-sm text-[hsl(var(--foreground))] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--ring))] resize-y"
           />
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-[11px] text-[hsl(var(--muted))]">
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]">
               {conversationText.length > 0 ? `${conversationText.split('\n').filter(l => l.trim()).length}줄` : ''}
             </span>
             <Button
@@ -194,7 +194,7 @@ export default function LearnPage() {
                   'px-3 py-1 text-xs font-medium rounded-md transition-colors',
                   activeTab === 'qa'
                     ? 'bg-[hsl(var(--primary))] text-white'
-                    : 'text-[hsl(var(--muted))] hover:bg-[hsl(var(--secondary))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))]'
                 )}
               >
                 추출된 Q&A ({qaResults.length})
@@ -205,7 +205,7 @@ export default function LearnPage() {
                   'px-3 py-1 text-xs font-medium rounded-md transition-colors',
                   activeTab === 'tone'
                     ? 'bg-[hsl(var(--primary))] text-white'
-                    : 'text-[hsl(var(--muted))] hover:bg-[hsl(var(--secondary))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))]'
                 )}
               >
                 말투 분석
@@ -217,12 +217,12 @@ export default function LearnPage() {
           {activeTab === 'qa' && (
             <div className="p-5">
               {qaResults.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted))] text-center py-8">추출된 Q&A 항목이 없습니다.</p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">추출된 Q&A 항목이 없습니다.</p>
               ) : (
                 <>
                   {/* Table header */}
                   <div className="mb-3 flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-xs text-[hsl(var(--muted))] cursor-pointer">
+                    <label className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={selectedItems.size === qaResults.length && qaResults.length > 0}
@@ -247,10 +247,10 @@ export default function LearnPage() {
                       <thead>
                         <tr className="bg-[hsl(var(--secondary))]">
                           <th className="w-9 px-3 py-2 text-left"></th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted))]">질문</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted))]">답변</th>
-                          <th className="w-24 px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted))]">카테고리</th>
-                          <th className="w-16 px-3 py-2 text-center text-xs font-medium text-[hsl(var(--muted))]">신뢰도</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted-foreground))]">질문</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted-foreground))]">답변</th>
+                          <th className="w-24 px-3 py-2 text-left text-xs font-medium text-[hsl(var(--muted-foreground))]">카테고리</th>
+                          <th className="w-16 px-3 py-2 text-center text-xs font-medium text-[hsl(var(--muted-foreground))]">신뢰도</th>
                           <th className="w-12 px-3 py-2"></th>
                         </tr>
                       </thead>
@@ -307,7 +307,7 @@ export default function LearnPage() {
                             ) : (
                               <>
                                 <td className="px-3 py-2.5 text-xs text-[hsl(var(--foreground))]">{item.question}</td>
-                                <td className="px-3 py-2.5 text-xs text-[hsl(var(--muted))]">{item.answer}</td>
+                                <td className="px-3 py-2.5 text-xs text-[hsl(var(--muted-foreground))]">{item.answer}</td>
                                 <td className="px-3 py-2.5">
                                   <Badge variant="default">{item.category}</Badge>
                                 </td>
@@ -339,7 +339,7 @@ export default function LearnPage() {
               {toneSummary && (
                 <div className="mb-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-4 py-3">
                   <p className="text-xs font-medium text-[hsl(var(--foreground))] mb-1">말투 요약</p>
-                  <p className="text-sm text-[hsl(var(--muted))]">{toneSummary}</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">{toneSummary}</p>
                 </div>
               )}
 
@@ -353,13 +353,13 @@ export default function LearnPage() {
                           <span className="text-sm font-medium text-[hsl(var(--foreground))]">{tp.pattern}</span>
                           <Badge variant="outline">{tp.count}회</Badge>
                         </div>
-                        <p className="mt-1 text-xs text-[hsl(var(--muted))]">예: &ldquo;{tp.example}&rdquo;</p>
+                        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">예: &ldquo;{tp.example}&rdquo;</p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-[hsl(var(--muted))] text-center py-8">감지된 말투 패턴이 없습니다.</p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">감지된 말투 패턴이 없습니다.</p>
               )}
 
               {tonePatterns.length > 0 && (
@@ -386,23 +386,23 @@ export default function LearnPage() {
         <div className="p-5">
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-md border border-[hsl(var(--border))] px-4 py-3">
-              <p className="text-xs text-[hsl(var(--muted))]">지식 항목 수</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">지식 항목 수</p>
               <p className="mt-1 text-xl font-bold text-[hsl(var(--foreground))]">-</p>
             </div>
             <div className="rounded-md border border-[hsl(var(--border))] px-4 py-3">
-              <p className="text-xs text-[hsl(var(--muted))]">최근 학습일</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">최근 학습일</p>
               <p className="mt-1 text-sm font-medium text-[hsl(var(--foreground))] flex items-center gap-1.5">
-                <Calendar size={13} className="text-[hsl(var(--muted))]" />
+                <Calendar size={13} className="text-[hsl(var(--muted-foreground))]" />
                 {toneProfile?.updatedAt
                   ? new Date(toneProfile.updatedAt).toLocaleDateString('ko-KR')
                   : '-'}
               </p>
             </div>
             <div className="rounded-md border border-[hsl(var(--border))] px-4 py-3">
-              <p className="text-xs text-[hsl(var(--muted))]">학습된 말투 패턴</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">학습된 말투 패턴</p>
               <p className="mt-1 text-xl font-bold text-[hsl(var(--foreground))]">
                 {toneProfile?.patterns?.length ?? 0}
-                <span className="ml-1 text-xs font-normal text-[hsl(var(--muted))]">개</span>
+                <span className="ml-1 text-xs font-normal text-[hsl(var(--muted-foreground))]">개</span>
               </p>
             </div>
           </div>

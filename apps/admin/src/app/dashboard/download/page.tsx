@@ -56,7 +56,7 @@ export default function DownloadPage() {
     <div className="max-w-[640px]">
       <div className="mb-6">
         <h1 className="text-lg font-bold text-[hsl(var(--foreground))]">앱 다운로드</h1>
-        <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+        <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
           OpenPLAT Bot 안드로이드 앱을 설치하세요
         </p>
       </div>
@@ -70,8 +70,8 @@ export default function DownloadPage() {
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-bold text-[hsl(var(--foreground))]">OpenPLAT Bot</h2>
-              <p className="mt-0.5 text-sm text-[hsl(var(--muted))]">카카오톡 CS 자동 응답 봇</p>
-              <div className="mt-3 flex items-center gap-3 text-xs text-[hsl(var(--muted))]">
+              <p className="mt-0.5 text-sm text-[hsl(var(--muted-foreground))]">카카오톡 CS 자동 응답 봇</p>
+              <div className="mt-3 flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
                 <span>Android</span>
                 <span className="text-[hsl(var(--border))]">|</span>
                 <span className="flex items-center gap-1">
@@ -157,7 +157,7 @@ export default function DownloadPage() {
               </span>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">APK 파일 다운로드</p>
-                <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+                <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                   위의 다운로드 버튼을 눌러 APK 파일을 받습니다.
                 </p>
               </div>
@@ -168,7 +168,7 @@ export default function DownloadPage() {
               </span>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">출처를 알 수 없는 앱 허용</p>
-                <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+                <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                   설정 &gt; 보안 &gt; &quot;출처를 알 수 없는 앱&quot;을 허용으로 변경합니다.
                 </p>
               </div>
@@ -179,7 +179,7 @@ export default function DownloadPage() {
               </span>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">APK 설치</p>
-                <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+                <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                   다운로드된 APK 파일을 실행하여 앱을 설치합니다.
                 </p>
               </div>
@@ -190,7 +190,7 @@ export default function DownloadPage() {
               </span>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">알림 접근 권한 설정</p>
-                <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+                <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                   앱 실행 후 안내에 따라 알림 접근 권한을 허용합니다. 카카오톡 메시지를 읽기 위해 필요합니다.
                 </p>
               </div>
@@ -201,7 +201,7 @@ export default function DownloadPage() {
               </span>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">서버 연결 확인</p>
-                <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">
+                <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                   대시보드의 &quot;연결 기기&quot; 페이지에서 기기가 온라인으로 표시되면 설정 완료입니다.
                 </p>
               </div>

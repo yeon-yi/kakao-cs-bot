@@ -40,7 +40,7 @@ export function FormField({ label, required, hint, children, className }: FormFi
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </label>
       {children}
-      {hint && <p className="mt-1 text-xs text-[hsl(var(--muted))]">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{hint}</p>}
     </div>
   );
 }

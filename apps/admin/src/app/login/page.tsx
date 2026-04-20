@@ -83,12 +83,12 @@ export default function LoginPage() {
           {/* Mobile brand (shown only on small screens) */}
           <div className="mb-8 lg:hidden">
             <span className="text-xl font-bold text-[hsl(var(--foreground))] tracking-tight">OpenPLAT</span>
-            <p className="mt-1 text-sm text-[hsl(var(--muted))]">고객 응대 자동화 플랫폼</p>
+            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">고객 응대 자동화 플랫폼</p>
           </div>
 
           <div className="mb-6">
             <h1 className="text-lg font-semibold text-[hsl(var(--foreground))]">로그인</h1>
-            <p className="mt-1 text-sm text-[hsl(var(--muted))]">관리자 계정으로 로그인하세요</p>
+            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">관리자 계정으로 로그인하세요</p>
           </div>
 
           <div className="rounded-lg border border-[hsl(var(--border))] bg-white p-6 shadow-sm">
@@ -133,7 +133,7 @@ export default function LoginPage() {
             </form>
           </div>
 
-          <p className="mt-6 text-center text-xs text-[hsl(var(--muted))]">
+          <p className="mt-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
             &copy; 2026 (주)모집 관리팀. All rights reserved.
           </p>
         </div>
