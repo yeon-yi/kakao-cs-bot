@@ -5,39 +5,29 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 import {
-  LayoutDashboard, BarChart3, BookOpen, PlusCircle, Upload, MessageSquare,
+  LayoutDashboard, BookOpen, MessageSquare,
   AlertCircle, MessagesSquare, UserCheck, Bell, FileText, Users,
-  UserCog, Settings, LogOut, AlertTriangle, Smartphone, Download,
+  Settings, LogOut, AlertTriangle, Download,
   GraduationCap,
 } from 'lucide-react';
 
 const navSections = [
   {
-    items: [
-      { href: '/dashboard', label: '대시보드', icon: LayoutDashboard },
-      { href: '/dashboard/analytics', label: '분석', icon: BarChart3 },
-      { href: '/dashboard/devices', label: '연결 기기', icon: Smartphone, badge: 'devices' as const },
-      { href: '/dashboard/download', label: '앱 다운로드', icon: Download },
-    ],
-  },
-  {
-    title: '지식 관리',
-    items: [
-      { href: '/knowledge', label: '지식 목록', icon: BookOpen },
-      { href: '/knowledge/add', label: '지식 추가', icon: PlusCircle },
-      { href: '/knowledge/upload', label: '파일 업로드', icon: Upload },
-      { href: '/knowledge/chat', label: '대화형 학습', icon: MessageSquare },
-      { href: '/knowledge/learn', label: '대화 학습', icon: GraduationCap },
-      { href: '/knowledge/feedback', label: '에스컬레이션', icon: AlertCircle, badge: true as const },
-      { href: '/knowledge/uncertainty', label: '불확실 주제', icon: AlertTriangle, badge: 'uncertainty' as const },
-    ],
-  },
-  {
     title: '운영',
     items: [
+      { href: '/dashboard', label: '운영 현황', icon: LayoutDashboard },
       { href: '/conversations', label: '대화 이력', icon: MessagesSquare },
+      { href: '/escalations', label: '에스컬레이션', icon: AlertCircle, badge: true as const },
       { href: '/identity', label: '신원 확인', icon: UserCheck },
-      { href: '/config/proactive', label: '자동 인사/차단', icon: Bell },
+    ],
+  },
+  {
+    title: '지식',
+    items: [
+      { href: '/knowledge', label: '지식 베이스', icon: BookOpen },
+      { href: '/knowledge/chat', label: '대화형 학습', icon: MessageSquare },
+      { href: '/knowledge/batch', label: '일괄 학습', icon: GraduationCap },
+      { href: '/knowledge/uncertainty', label: '불확실 주제', icon: AlertTriangle, badge: 'uncertainty' as const },
     ],
   },
   {
@@ -45,8 +35,9 @@ const navSections = [
     items: [
       { href: '/config/prompts', label: '프롬프트', icon: FileText },
       { href: '/config/staff', label: '직원 관리', icon: Users },
-      { href: '/config/assignees', label: '담당자 배정', icon: UserCog },
+      { href: '/config/proactive', label: '자동 인사/차단', icon: Bell },
       { href: '/config/general', label: '일반 설정', icon: Settings },
+      { href: '/config/download', label: '앱 다운로드', icon: Download },
     ],
   },
 ];
@@ -60,9 +51,6 @@ export function Sidebar() {
   });
   const { data: uncertaintyData } = trpc.uncertainty.openCount.useQuery(undefined, {
     refetchInterval: 60000,
-  });
-  const { data: deviceSummary } = trpc.devices.summary.useQuery(undefined, {
-    refetchInterval: 15000,
   });
 
   const handleLogout = () => {
@@ -93,7 +81,6 @@ export function Sidebar() {
                 const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                 const hasBadge = 'badge' in item && item.badge === true && pendingData && pendingData.count > 0;
                 const hasUncertaintyBadge = 'badge' in item && item.badge === 'uncertainty' && uncertaintyData && uncertaintyData.count > 0;
-                const hasDeviceBadge = 'badge' in item && item.badge === 'devices' && deviceSummary;
 
                 return (
                   <Link
@@ -120,14 +107,6 @@ export function Sidebar() {
                     {hasUncertaintyBadge && (
                       <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white leading-none">
                         {uncertaintyData.count}
-                      </span>
-                    )}
-                    {hasDeviceBadge && (
-                      <span className={cn(
-                        'flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white leading-none',
-                        deviceSummary.error > 0 ? 'bg-red-500' : deviceSummary.online > 0 ? 'bg-emerald-500' : 'bg-zinc-500'
-                      )}>
-                        {deviceSummary.online}/{deviceSummary.total}
                       </span>
                     )}
                   </Link>
