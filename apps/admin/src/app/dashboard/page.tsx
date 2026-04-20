@@ -5,10 +5,11 @@ import {
   Activity, TrendingUp, AlertTriangle, DollarSign, Clock, Target,
   MessageSquare, Users, BookOpen, Zap, BarChart3, MessagesSquare,
   Brain, CheckCircle2, TrendingDown, Link2,
+  type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { StatCard as BaseStatCard } from '@/components/ui/stat-card';
 
-const iconMap = {
+const iconMap: Record<string, LucideIcon> = {
   messages: Activity,
   response: TrendingUp,
   escalation: AlertTriangle,
@@ -37,49 +38,16 @@ interface StatCardProps {
   sub?: string;
 }
 
-const accentColors: Record<string, string> = {
-  blue: 'bg-blue-600',
-  green: 'bg-emerald-600',
-  amber: 'bg-amber-500',
-  red: 'bg-red-500',
-  violet: 'bg-violet-600',
-  cyan: 'bg-teal-600',
-  indigo: 'bg-indigo-600',
-  pink: 'bg-pink-500',
-};
-
-const iconColors: Record<string, string> = {
-  blue: 'text-blue-600',
-  green: 'text-emerald-600',
-  amber: 'text-amber-500',
-  red: 'text-red-500',
-  violet: 'text-violet-600',
-  cyan: 'text-teal-600',
-  indigo: 'text-indigo-600',
-  pink: 'text-pink-500',
-};
-
-function StatCard({ title, value, unit, icon, alert, color = 'blue', sub }: StatCardProps) {
-  const Icon = iconMap[icon];
-
+function StatCard({ title, value, unit, icon, alert, sub }: StatCardProps) {
   return (
-    <div className={cn(
-      'relative overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-white p-4 shadow-sm',
-      alert && 'border-red-300',
-    )}>
-      <div className={cn('absolute left-0 top-0 bottom-0 w-[3px]', accentColors[color])} />
-      <div className="flex items-start justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-[hsl(var(--muted))] truncate">{title}</p>
-          <p className="mt-1.5 text-xl font-bold text-[hsl(var(--foreground))] tracking-tight">
-            {typeof value === 'number' ? value.toLocaleString() : value}
-            {unit && <span className="ml-1 text-xs font-normal text-[hsl(var(--muted))]">{unit}</span>}
-          </p>
-          {sub && <p className="mt-1 text-[11px] text-[hsl(var(--muted))]">{sub}</p>}
-        </div>
-        <Icon size={16} className={cn('shrink-0 mt-0.5', iconColors[color])} />
-      </div>
-    </div>
+    <BaseStatCard
+      title={title}
+      value={value}
+      unit={unit}
+      icon={iconMap[icon]}
+      sub={sub}
+      alert={alert}
+    />
   );
 }
 
@@ -88,7 +56,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
     <div className="mb-3 flex items-baseline gap-3">
       <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">{title}</h2>
       {description && (
-        <span className="text-[11px] text-[hsl(var(--muted))]">{description}</span>
+        <span className="text-[11px] text-[hsl(var(--muted-foreground))]">{description}</span>
       )}
     </div>
   );
@@ -127,9 +95,9 @@ export default function DashboardPage() {
       <div className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="text-lg font-bold text-[hsl(var(--foreground))]">대시보드</h1>
-          <p className="mt-0.5 text-xs text-[hsl(var(--muted))]">실시간 현황 (1분 갱신)</p>
+          <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">실시간 현황 (1분 갱신)</p>
         </div>
-        <span className="text-xs text-[hsl(var(--muted))]">{dateStr}</span>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">{dateStr}</span>
       </div>
 
       {/* 오늘 실시간 */}
@@ -319,14 +287,14 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-[hsl(var(--foreground))] truncate">{r.room_id}</span>
                       {r.user_name && (
-                        <span className="shrink-0 rounded bg-[hsl(var(--secondary))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted))]">
+                        <span className="shrink-0 rounded bg-[hsl(var(--secondary))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))]">
                           {r.user_name}
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs text-[hsl(var(--muted))] truncate">{r.user_message}</p>
+                    <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))] truncate">{r.user_message}</p>
                   </div>
-                  <span className="ml-3 shrink-0 text-[10px] text-[hsl(var(--muted))]">
+                  <span className="ml-3 shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">
                     {new Date(r.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
