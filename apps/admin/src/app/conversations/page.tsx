@@ -6,16 +6,27 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input, Select } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { MessagesSquare, ChevronLeft, Clock, User, Camera, Video, Sparkles } from 'lucide-react';
+import { DrawerSheet } from '@/components/ui/drawer-sheet';
+import { KnowledgeAddForm } from '../knowledge/_forms/add-form';
+import { MessagesSquare, ChevronLeft, Clock, User, Camera, Video, Sparkles, BookOpen } from 'lucide-react';
+
+type Period = 'today' | 'week' | 'month' | 'all';
 
 export default function ConversationsPage() {
   const [search, setSearch] = useState('');
+  const [period, setPeriod] = useState<Period>('today');
+  const [hasEscalation, setHasEscalation] = useState(false);
+  const [hasStaff, setHasStaff] = useState(false);
   const [offset, setOffset] = useState(0);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [quickAddInit, setQuickAddInit] = useState<{ question: string; answer?: string } | null>(null);
   const limit = 30;
 
   const { data: rooms, isLoading } = trpc.conversations.rooms.useQuery({
     search: search || undefined,
+    period,
+    hasEscalation: hasEscalation || undefined,
+    hasStaff: hasStaff || undefined,
     offset,
     limit,
   });
@@ -24,6 +35,8 @@ export default function ConversationsPage() {
     { roomId: selectedRoomId!, limit: 100 },
     { enabled: !!selectedRoomId },
   );
+
+  const resetOffset = () => setOffset(0);
 
   if (selectedRoomId) {
     return (
@@ -52,8 +65,9 @@ export default function ConversationsPage() {
             <div className="space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto scrollbar-thin">
               {messages.data.map((msg: any, i: number) => {
                 const isBot = msg.role === 'assistant' || msg.role === 'bot';
+                const text: string = msg.content || msg.message || '';
                 return (
-                  <div key={msg.id || i} className={`flex ${isBot ? 'justify-start' : 'justify-end'}`}>
+                  <div key={msg.id || i} className={`group relative flex ${isBot ? 'justify-start' : 'justify-end'}`}>
                     <div className={`max-w-[70%] rounded-xl px-4 py-2.5 text-sm ${
                       isBot
                         ? 'bg-zinc-100 text-zinc-800'
@@ -70,7 +84,7 @@ export default function ConversationsPage() {
                           <Video size={12} /> 영상
                         </span>
                       )}
-                      <p className="whitespace-pre-wrap break-words">{msg.content || msg.message}</p>
+                      <p className="whitespace-pre-wrap break-words">{text}</p>
                       <p className={`text-[10px] mt-1 ${isBot ? 'text-zinc-400' : 'text-blue-200'}`}>
                         {new Date(msg.created_at).toLocaleString('ko-KR')}
                         {msg.user_name && !isBot && ` - ${msg.user_name}`}
@@ -104,12 +118,42 @@ export default function ConversationsPage() {
                         </div>
                       )}
                     </div>
+                    {text && (
+                      <button
+                        type="button"
+                        onClick={() => setQuickAddInit({
+                          question: isBot ? '' : text,
+                          answer: isBot ? text : '',
+                        })}
+                        className={`opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 rounded bg-white border border-[hsl(var(--border))] p-1 shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] ${isBot ? 'left-[calc(70%+4px)]' : 'right-[calc(70%+4px)]'}`}
+                        title="지식DB로 등록"
+                        aria-label="지식DB로 등록"
+                      >
+                        <BookOpen size={12} />
+                      </button>
+                    )}
                   </div>
                 );
               })}
             </div>
           </Card>
         )}
+
+        <DrawerSheet
+          open={!!quickAddInit}
+          onClose={() => setQuickAddInit(null)}
+          title="지식 추가"
+          description="이 메시지를 기반으로 QA를 등록합니다"
+        >
+          {quickAddInit && (
+            <KnowledgeAddForm
+              initialQuestion={quickAddInit.question}
+              initialAnswer={quickAddInit.answer}
+              onSuccess={() => setQuickAddInit(null)}
+              onCancel={() => setQuickAddInit(null)}
+            />
+          )}
+        </DrawerSheet>
       </div>
     );
   }
@@ -123,9 +167,40 @@ export default function ConversationsPage() {
         </p>
       </div>
 
-      <div className="mb-4">
-        <Input type="text" value={search} onChange={(e) => { setSearch(e.currentTarget.value); setOffset(0); }}
-          placeholder="방 이름 또는 사용자 이름으로 검색..." />
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <Input
+          type="text"
+          value={search}
+          onChange={(e) => { setSearch(e.currentTarget.value); resetOffset(); }}
+          placeholder="방/멤버 검색"
+          className="w-64"
+        />
+        <Select
+          value={period}
+          onChange={(e) => { setPeriod(e.currentTarget.value as Period); resetOffset(); }}
+          className="w-32"
+        >
+          <option value="today">오늘</option>
+          <option value="week">이번 주</option>
+          <option value="month">이번 달</option>
+          <option value="all">전체</option>
+        </Select>
+        <label className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hasEscalation}
+            onChange={(e) => { setHasEscalation(e.currentTarget.checked); resetOffset(); }}
+          />
+          에스컬레이션 있음
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hasStaff}
+            onChange={(e) => { setHasStaff(e.currentTarget.checked); resetOffset(); }}
+          />
+          직원 참여
+        </label>
       </div>
 
       {isLoading ? (
