@@ -84,25 +84,31 @@ webhookApp.post('/device/heartbeat', async (c) => {
 
     if (deviceError) {
       await dbQuery(
-        `UPDATE connected_devices SET
-           status = 'error', last_heartbeat = NOW(),
-           last_error = $2, error_count = error_count + 1
-         WHERE device_id = $1`,
+        `INSERT INTO connected_devices (device_id, status, last_heartbeat, last_error, error_count)
+         VALUES ($1, 'error', NOW(), $2, 1)
+         ON CONFLICT (device_id) DO UPDATE SET
+           status = 'error',
+           last_heartbeat = NOW(),
+           last_error = $2,
+           error_count = connected_devices.error_count + 1`,
         [deviceId, deviceError]
       );
     } else {
       await dbQuery(
-        `UPDATE connected_devices SET
-           status = 'online', last_heartbeat = NOW(),
-           messages_sent = COALESCE($2, messages_sent),
-           messages_today = COALESCE($3, messages_today),
-           last_error = NULL
-         WHERE device_id = $1`,
+        `INSERT INTO connected_devices (device_id, status, last_heartbeat, messages_sent, messages_today)
+         VALUES ($1, 'online', NOW(), COALESCE($2, 0), COALESCE($3, 0))
+         ON CONFLICT (device_id) DO UPDATE SET
+           status = 'online',
+           last_heartbeat = NOW(),
+           messages_sent = COALESCE($2, connected_devices.messages_sent),
+           messages_today = COALESCE($3, connected_devices.messages_today),
+           last_error = NULL`,
         [deviceId, messagesTotal ?? null, messagesToday ?? null]
       );
     }
     return c.json({ success: true });
   } catch (error) {
+    logger.error('Device heartbeat error', { error: String(error) });
     return c.json({ error: 'Internal server error' }, 500);
   }
 });
